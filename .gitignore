@@ -1,2 +1,8 @@
 # Local Claude Code settings (per-machine permissions)
 .claude/settings.local.json
+
+# Sandcastle
+.sandcastle/.env
+worktrees/
+logs/
+node_modules/

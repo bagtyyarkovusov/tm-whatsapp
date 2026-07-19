@@ -1,0 +1,13 @@
+{
+  "name": "tm-whatsapp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sandcastle": "tsx .sandcastle/main.mts"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "@ai-hero/sandcastle": "file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7.tgz"
+  }
+}

@@ -1,0 +1,60 @@
+# TASK
+
+Fix issue {{TASK_ID}}: {{ISSUE_TITLE}}
+
+Pull in the issue using `gh issue view {{TASK_ID}} --comments`. If it has a parent PRD, pull that in too.
+
+Only work on the issue specified.
+
+Work on branch {{BRANCH}}. Make commits and run tests.
+
+# CONTEXT
+
+Here are the last 10 commits:
+
+<recent-commits>
+
+!`git log -n 10 --format="%H%n%ad%n%B---" --date=short`
+
+</recent-commits>
+
+If this project has a `docs/adr/` directory, read any ADRs relevant to the area you're touching before making architectural decisions. Read the root `CONTEXT.md` if it exists, and use its glossary vocabulary in code, tests, and commit messages.
+
+# EXPLORATION
+
+Use `gh issue view {{TASK_ID}} --comments` to read the issue. If it has a parent PRD (check the "Depends on" line), pull the parent PRD too and read it fully before you start — it contains the architecture, testing strategy, and module decisions for this slice.
+
+If you encounter unfamiliar libraries or need current API docs, use Context7: call `resolve-library-id` with the library name, then `query-docs` with your question.
+
+Explore the repo and fill your context window with relevant information that will allow you to complete the task.
+
+Pay extra attention to test files that touch the relevant parts of the code.
+
+# EXECUTION
+
+If applicable, use RGR to complete the task.
+
+1. RED: write one test
+2. GREEN: write the implementation to pass that test
+3. REPEAT until done
+4. REFACTOR the code
+
+# FEEDBACK LOOPS
+
+Before committing, run the project's own gates (typecheck, lint, tests — look at `package.json` scripts) and make sure they pass.
+
+# COMMIT
+
+Make a git commit. The commit message must:
+
+1. Start with `RALPH:` prefix
+2. Include task completed + PRD reference
+3. Key decisions made
+4. Files changed
+5. Blockers or notes for next iteration
+
+Keep it concise.
+
+# THE ISSUE
+
+If the task is not complete, leave a comment on the issue with what was done.
