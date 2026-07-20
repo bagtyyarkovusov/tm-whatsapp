@@ -58,3 +58,26 @@ Keep it concise.
 # THE ISSUE
 
 If the task is not complete, leave a comment on the issue with what was done.
+
+# CONTAINER LIMITATIONS
+
+You are running inside a Linux Docker container WITHOUT:
+
+- Docker (no building images or starting containers)
+- iOS/Android native build tooling
+- Ability to run long-running dev servers (Metro, Next.js dev, etc. block forever)
+
+You DO have:
+
+- Node.js 22, pnpm, git, curl, jq, gh, railway
+- Full access to the repo code
+- Ability to run builds, typecheck, lint, and unit tests
+- Context7 MCP for querying library docs
+
+Work within these constraints. Do not attempt to use tools that are not available.
+
+Once complete, output <promise>COMPLETE</promise>.
+
+# FINAL RULES
+
+ONLY WORK ON A SINGLE TASK.
