@@ -114,6 +114,35 @@ const MERGER_IDLE_TIMEOUT_SECONDS = Number(
 // Agent construction: per-role matrix + 401 fallback ladder (both providers)
 // ---------------------------------------------------------------------------
 
+const shellEscape = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+
+/**
+ * Wrap a provider so its env is prefixed onto the print command (`env K=V …`).
+ *
+ * Why: top-level `sandcastle.run()` merges agent env into the container at
+ * create time, but `createSandbox()` starts its long-lived container with
+ * `agentProviderEnv: {}` — per-run agent env never reaches `sandbox.run()`
+ * execs (docker exec inherits the container's env). Prefixing the command
+ * delivers the correct per-role env on every run, including per-rung window
+ * changes while descending the fallback ladder inside a shared sandbox.
+ * (auto.tm-rewrite worked around the same gap with a custom buildPrintCommand.)
+ */
+const withProviderEnv = (
+  provider: sandcastle.AgentProvider,
+  env: Record<string, string>,
+): sandcastle.AgentProvider => {
+  const prefix = Object.entries(env)
+    .map(([k, v]) => `${k}=${shellEscape(v)}`)
+    .join(" ");
+  return {
+    ...provider,
+    buildPrintCommand(opts) {
+      const cmd = provider.buildPrintCommand(opts);
+      return { ...cmd, command: `env ${prefix} ${cmd.command}` };
+    },
+  };
+};
+
 const agentAtRung = (
   role: AgentRole,
   rung: LadderRung,
@@ -123,29 +152,31 @@ const agentAtRung = (
   if (PROVIDER === "kimi-code") {
     // Native CLI: window travels via KIMI_MODEL_MAX_CONTEXT_SIZE, effort via
     // KIMI_MODEL_THINKING_EFFORT. Model id stays `k3` (never the k3[1m] alias).
-    return sandcastle.kimiCode(rung.model, {
-      thinking: true,
-      env: kimiCodeEnv({
-        apiKey: KIMI_API_KEY!,
-        model: rung.model,
-        window: rung.window,
-        effort: spec.effort,
-      }),
+    const env = kimiCodeEnv({
+      apiKey: KIMI_API_KEY!,
+      model: rung.model,
+      window: rung.window,
+      effort: spec.effort,
     });
+    return withProviderEnv(
+      sandcastle.kimiCode(rung.model, { thinking: true, env }),
+      env,
+    );
   }
 
   // Claude Code on Kimi: every Claude model slot pins to the same Kimi model;
   // k3 above 256K is spelled `k3[1m]` (the alias opts into the 1M window).
   const model = claudeModelForRung(rung);
-  return sandcastle.claudeCode(model, {
+  const env = claudeOnKimiEnv({
+    apiKey: KIMI_API_KEY!,
+    model,
+    window: rung.window,
     effort: spec.effort,
-    env: claudeOnKimiEnv({
-      apiKey: KIMI_API_KEY!,
-      model,
-      window: rung.window,
-      effort: spec.effort,
-    }),
   });
+  return withProviderEnv(
+    sandcastle.claudeCode(model, { effort: spec.effort, env }),
+    env,
+  );
 };
 
 /**
@@ -216,9 +247,35 @@ const slugIssueTitle = (title: string) =>
 const canonicalIssueBranch = (issue: { id: string; title: string }) =>
   `sandcastle/issue-${issue.id}-${slugIssueTitle(issue.title)}`;
 
+const getWorktreeForBranch = async (branch: string) => {
+  const { stdout } = await execGit(["worktree", "list", "--porcelain"]);
+  const blocks = stdout.trim().split(/\n\n+/).filter(Boolean);
+  const ref = `refs/heads/${branch}`;
+
+  for (const block of blocks) {
+    const lines = block.split("\n");
+    const worktreeLine = lines.find((line) => line.startsWith("worktree "));
+    const branchLine = lines.find((line) => line.startsWith("branch "));
+    if (branchLine?.slice("branch ".length) === ref && worktreeLine) {
+      return worktreeLine.slice("worktree ".length);
+    }
+  }
+  return undefined;
+};
+
+const getDirtyStatus = async (worktreePath: string) => {
+  const { stdout } = await execGit(["status", "--porcelain"], {
+    cwd: worktreePath,
+  });
+  return stdout.trim();
+};
+
 /**
  * Reset a stale issue branch that has no unique commits, so a re-run starts
- * from the current HEAD instead of stacking on abandoned work.
+ * from the current HEAD instead of stacking on abandoned work. A previous
+ * run's worktree may still have the branch checked out — git refuses to
+ * force-update a checked-out branch, so the worktree goes first (only when
+ * it's clean; a dirty one means real work, keep both).
  */
 const prepareIssueBranch = async (issue: { id: string; branch: string }) => {
   if (!(await branchExists(issue.branch))) return;
@@ -226,6 +283,21 @@ const prepareIssueBranch = async (issue: { id: string; branch: string }) => {
   if ((await countUniqueCommits(baseHead, issue.branch)) > 0) return;
   const { stdout: current } = await execGit(["branch", "--show-current"]);
   if (current.trim() === issue.branch) return;
+
+  const worktreePath = await getWorktreeForBranch(issue.branch);
+  if (worktreePath) {
+    if (await getDirtyStatus(worktreePath)) {
+      console.log(
+        `[branch:${issue.branch}] keeping worktree with uncommitted changes at ${worktreePath}.`,
+      );
+      return;
+    }
+    console.log(
+      `[branch:${issue.branch}] removing clean stale worktree before reset.`,
+    );
+    await execGit(["worktree", "remove", "--force", worktreePath]);
+  }
+
   console.log(`[branch:${issue.branch}] resetting empty stale branch to HEAD.`);
   await execGit(["branch", "-f", issue.branch, baseHead]);
 };
