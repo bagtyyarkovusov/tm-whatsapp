@@ -1,6 +1,11 @@
 # TASK
 
-Review the code changes on branch `{{BRANCH}}` and improve code clarity, consistency, and maintainability while preserving exact functionality.
+Review issue #{{TASK_ID}} ({{ISSUE_TITLE}}) on branch `{{BRANCH}}`.
+
+Fetch the current issue body and comments. Review the implementation against
+every agent-verifiable acceptance item, not merely against the diff. Confirm
+that declared blockers were closed before work began and that no human-only
+validation was silently substituted.
 
 # CONTEXT
 
@@ -14,7 +19,7 @@ Review the code changes on branch `{{BRANCH}}` and improve code clarity, consist
 
 # REVIEW PROCESS
 
-1. **Understand the change**: Read the diff and commits above to understand the intent.
+1. **Understand the change**: Read the issue, diff, and commits to understand the intent.
 
 2. **Analyze for improvements**: Look for opportunities to:
    - Reduce unnecessary complexity and nesting
@@ -74,8 +79,16 @@ Before approving this branch for merge, verify ALL of the following:
 6. No generated directories (`.next/`, `.expo/`, `dist/`, `android/`, `ios/`) were committed
 7. The change respects relevant ADRs in `docs/adr/`
 
-If ANY check fails, REJECT the merge and output the exact errors. Do not approve.
+If ANY check or acceptance item fails, reject the PR and output the exact errors.
+An implementer statement such as "not tested", a substituted acceptance check,
+or a missing required deployment is a rejection.
 
 If the code is already clean and well-structured, do nothing.
 
-Once complete, output <promise>COMPLETE</promise>.
+Approve only when every check passes by outputting exactly:
+
+`<review-result>APPROVED</review-result>`
+
+Otherwise output exactly:
+
+`<review-result>REJECTED</review-result>`

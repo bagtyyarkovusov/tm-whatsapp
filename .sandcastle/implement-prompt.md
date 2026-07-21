@@ -8,6 +8,10 @@ Only work on the issue specified.
 
 Work on branch {{BRANCH}}. Make commits and run tests.
 
+Before editing, verify that the issue is unassigned and every `Blocked by:`
+dependency is closed. Assign yourself and comment with this branch and a concise
+execution plan. If the issue is already claimed, stop as incomplete.
+
 # CONTEXT
 
 Here are the last 10 commits:
@@ -22,7 +26,14 @@ If this project has a `docs/adr/` directory, read any ADRs relevant to the area 
 
 # EXPLORATION
 
-Use `gh issue view {{TASK_ID}} --comments` to read the issue. If it has a parent PRD (check the "Depends on" line), pull the parent PRD too and read it fully before you start — it contains the architecture, testing strategy, and module decisions for this slice.
+Use `gh issue view {{TASK_ID}} --comments` to read the issue. Read every
+repository-local PRD, ADR, contract, and path named by the issue. Do not rely on
+another checkout being mounted in the container.
+
+Run `scripts/agent-preflight.sh` before implementation. If the issue body
+contains `requires_railway: true`, run `scripts/agent-preflight.sh --railway`
+instead and use the `use-railway` skill for every Railway operation. Never touch
+Railway production.
 
 If you encounter unfamiliar libraries or need current API docs, use Context7: call `resolve-library-id` with the library name, then `query-docs` with your question.
 
@@ -57,7 +68,8 @@ Keep it concise.
 
 # THE ISSUE
 
-If the task is not complete, leave a comment on the issue with what was done.
+If the task is not complete, leave a structured handoff comment with completed
+work, failing evidence, and the smallest next action. Do not claim completion.
 
 # CONTAINER LIMITATIONS
 
@@ -76,7 +88,13 @@ You DO have:
 
 Work within these constraints. Do not attempt to use tools that are not available.
 
-Once complete, output <promise>COMPLETE</promise>.
+When every agent-verifiable acceptance item is satisfied, output exactly:
+
+`<agent-result>COMPLETE</agent-result>`
+
+Otherwise output exactly:
+
+`<agent-result>INCOMPLETE</agent-result>`
 
 # FINAL RULES
 

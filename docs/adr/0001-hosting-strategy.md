@@ -32,7 +32,16 @@ Railway (foreign cloud) cannot serve in-TM users at scale — but it is ideal fo
 
 ### Amendment 2026-07-20 — Railway environment topology
 
-Three environments, sequenced by tenant: `development` (created 2026-07-20; default target for agents/sandboxes, pinned via `RAILWAY_ENVIRONMENT`), `production` (untouched until first beta users at/after approval), `staging` (created at the store-submission trigger; release candidates soak there and store reviewers point at staging — never at prod). Auth for automation: workspace-scoped `RAILWAY_TOKEN` in `.sandcastle/.env` (gitignored), with `RAILWAY_PROJECT_ID` pinned so agents deterministically target this project.
+Three environments, sequenced by tenant: `development` (created 2026-07-20; default target for agents/sandboxes), `production` (untouched until first beta users at/after approval), `staging` (created at the store-submission trigger; release candidates soak there and store reviewers point at staging — never at prod).
+
+### Amendment 2026-07-22 — least-privilege agent access
+
+Unattended agents use a project-scoped `RAILWAY_TOKEN`, never an account-wide
+`RAILWAY_API_TOKEN`. `RAILWAY_PROJECT_ID` and `RAILWAY_ENVIRONMENT_ID` pin the
+exact development target. The token is injected only into implementer/reviewer
+containers for issues declaring `requires_railway: true`; planners, publishers,
+and unrelated issues receive no Railway credentials. A fresh-container
+preflight must reject production before any Railway issue becomes agent-ready.
 
 ## Consequences
 

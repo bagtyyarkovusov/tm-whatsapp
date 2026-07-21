@@ -2,6 +2,9 @@
 
 Per ADR-0002. Each phase ends in a store submission (or meaningful TestFlight/closed-track release). Exit criteria are the gate; nothing ships past its gate.
 
+The detailed Phase 1 release and agent execution tree is defined in
+[`02-phase-1-execution.md`](02-phase-1-execution.md).
+
 ## Phase 1 — Core
 
 **Ships:** phone OTP auth · contact discovery · 1:1 text chat with E2EE from day one · push notifications.

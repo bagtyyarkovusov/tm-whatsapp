@@ -1,0 +1,81 @@
+name: Agent-ready implementation
+description: A fully decided, independently verifiable implementation slice
+title: ""
+labels:
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `ready-for-agent` is applied only after the readiness checklist in
+        `docs/agents/agent-ready.md` passes. Do not select it while creating the issue.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: One observable result this issue delivers.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: In scope
+      description: Exact behavior, modules, routes, events, and schema owned.
+    validations:
+      required: true
+  - type: textarea
+    id: non_scope
+    attributes:
+      label: Out of scope
+      description: Adjacent work explicitly excluded.
+    validations:
+      required: true
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Decisions already settled
+      description: Libraries, contracts, security rules, errors, retries, and environment variables.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: "Use `Blocked by: #123, #124` or `Blocked by: None`; native edges must match."
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Local context
+      description: Repository-local PRDs, ADRs, contracts, and relevant paths.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Agent environment
+      description: "Tools, secrets, allowed mutations, forbidden targets, and preflight command. Include `requires_railway: true` when applicable."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance — agent-verifiable
+      description: Exact commands and observable results as checkboxes.
+    validations:
+      required: true
+  - type: textarea
+    id: human
+    attributes:
+      label: Human validation
+      description: Must be `None`; otherwise create a separate ready-for-human issue.
+    validations:
+      required: true
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback and observability
+      description: Required for infrastructure, migrations, queues, and deployments; otherwise explain why not applicable.
+    validations:
+      required: true
