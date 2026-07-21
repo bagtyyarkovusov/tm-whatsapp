@@ -18,7 +18,7 @@
     "sandcastle": "tsx .sandcastle/main.mts"
   },
   "devDependencies": {
-    "@ai-hero/sandcastle": "file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7-c635e830.tgz",
+    "@ai-hero/sandcastle": "file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7-1df6ad8f.tgz",
     "@eslint/js": "^9.28.0",
     "eslint": "^9.28.0",
     "eslint-config-prettier": "^10.1.5",

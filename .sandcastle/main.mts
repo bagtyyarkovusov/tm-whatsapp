@@ -15,18 +15,24 @@
 //   claude-code  Claude Code CLI on Kimi's Anthropic-compatible endpoint (default)
 //   kimi-code    Native Kimi Code CLI via its documented KIMI_MODEL_* env channel
 //
-// Both providers share the locked per-role matrix and the 401 fallback ladder:
+// Both providers share the locked per-role matrix and the fallback ladder:
 //
-//   Role         Effort   Context (default)    Override knob
-//   merger       max      1M (1048576)         SANDCASTLE_KIMI_WINDOW_MERGER
-//   reviewer     max      1M                   SANDCASTLE_KIMI_WINDOW_REVIEWER
-//   implementer  high     1M                   SANDCASTLE_KIMI_WINDOW_IMPLEMENTER
-//   planner      high     1M                   SANDCASTLE_KIMI_WINDOW_PLANNER
+//   Role         Model            Effort   Context (default)   Override knob
+//   merger       k3               high     1M (1048576)        SANDCASTLE_KIMI_WINDOW_MERGER
+//   reviewer     k3               high     1M                  SANDCASTLE_KIMI_WINDOW_REVIEWER
+//   implementer  kimi-for-coding  —        256K                SANDCASTLE_KIMI_WINDOW_IMPLEMENTER
+//   planner      kimi-for-coding  —        256K                SANDCASTLE_KIMI_WINDOW_PLANNER
 //
-//   Ladder on HTTP 401 (plan lacks K3 or 1M entitlement), both providers:
-//   k3@<role-window> → k3@262144 → kimi-for-coding@262144.
+// K2.7 Code (kimi-for-coding) has NO effort levels — Thinking is ON-only —
+// so no effort knob is sent on K2.7 rungs; its 32K max output is pinned via
+// CLAUDE_CODE_MAX_OUTPUT_TOKENS (claude-code provider only).
 //
-// Thinking stays ON everywhere — disabling it silently routes K3 → K2.6.
+//   Ladder on HTTP 401 (plan lacks K3 or 1M entitlement) / 403 quota
+//   exhaustion (per-model pools), both providers:
+//     k3 role:   k3@<role-window> → k3@262144 → kimi-for-coding@262144
+//     K2.7 role: kimi-for-coding@<role-window> → k3@262144
+//
+// Thinking stays ON everywhere — disabling it silently routes K3/K2.7 → K2.6.
 //
 // Run: `npm run sandcastle` (= tsx .sandcastle/main.mts). Set MAX_ITERATIONS=1
 // for a smoke test. Requires .sandcastle/.env (see .env.example) and a running
@@ -39,8 +45,10 @@ import {
   buildFallbackLadder,
   claudeModelForRung,
   claudeOnKimiEnv,
+  effortForRung,
   isKimiEntitlementError,
   kimiCodeEnv,
+  maxOutputTokensForRung,
   resolveRoleSpec,
   type AgentRole,
   type LadderRung,
@@ -148,6 +156,10 @@ const agentAtRung = (
   rung: LadderRung,
 ): sandcastle.AgentProvider => {
   const spec = resolveRoleSpec(role, HOST_ENV);
+  // Effort is K3-only: undefined on kimi-for-coding rungs (K2.7 has no
+  // effort levels) and on the k3 fallback rung of an effort-less K2.7 role
+  // (K3 then defaults server-side to high).
+  const effort = effortForRung(spec, rung);
 
   if (PROVIDER === "kimi-code") {
     // Native CLI: window travels via KIMI_MODEL_MAX_CONTEXT_SIZE, effort via
@@ -156,7 +168,7 @@ const agentAtRung = (
       apiKey: KIMI_API_KEY!,
       model: rung.model,
       window: rung.window,
-      effort: spec.effort,
+      effort,
     });
     return withProviderEnv(
       sandcastle.kimiCode(rung.model, { thinking: true, env }),
@@ -171,23 +183,28 @@ const agentAtRung = (
     apiKey: KIMI_API_KEY!,
     model,
     window: rung.window,
-    effort: spec.effort,
+    effort,
+    // K2.7 caps output at 32K — pin it so Claude Code can't request more
+    // than the model emits (k3 rungs stay unpinned; cap undocumented).
+    maxOutputTokens: maxOutputTokensForRung(rung),
   });
   return withProviderEnv(
-    sandcastle.claudeCode(model, { effort: spec.effort, env }),
+    sandcastle.claudeCode(model, { effort, env }),
     env,
   );
 };
 
 /**
- * Run `fn` with the role's agent, descending the fallback ladder on HTTP 401:
- * k3@role-window → k3@262144 → kimi-for-coding@262144. Non-401 errors abort.
+ * Run `fn` with the role's agent, descending the fallback ladder on HTTP
+ * 401/403-quota: k3 roles go k3@role-window → k3@262144 →
+ * kimi-for-coding@262144; K2.7 roles fall back up to k3@262144.
+ * Non-entitlement errors abort.
  */
 const withLadder = async <T>(
   role: AgentRole,
   fn: (agent: sandcastle.AgentProvider) => Promise<T>,
 ): Promise<T> => {
-  const ladder = buildFallbackLadder(resolveRoleSpec(role, HOST_ENV).window);
+  const ladder = buildFallbackLadder(resolveRoleSpec(role, HOST_ENV));
   for (const [i, rung] of ladder.entries()) {
     if (i > 0) {
       console.warn(
@@ -372,7 +389,7 @@ const mergerHooks = {
 // ---------------------------------------------------------------------------
 
 console.log(
-  `Provider: ${PROVIDER} | matrix: merger/reviewer=max, implementer/planner=high, 1M default | ladder: k3@1M → k3@256K → kimi-for-coding@256K`,
+  `Provider: ${PROVIDER} | matrix: planner/implementer=kimi-for-coding@256K (no effort), reviewer/merger=k3 high@1M | ladder: k3@1M → k3@256K → kimi-for-coding@256K (K2.7 roles: → k3@256K)`,
 );
 
 for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {

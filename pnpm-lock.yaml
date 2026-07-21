@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@ai-hero/sandcastle':
-        specifier: file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7-c635e830.tgz
-        version: file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7-c635e830.tgz(@effect/cluster@0.57.0(@effect/platform@0.95.0(effect@3.22.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.95.0(effect@3.22.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(effect@3.22.0))(effect@3.22.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/typeclass@0.39.0(effect@3.22.0))
+        specifier: file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7-1df6ad8f.tgz
+        version: file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7-1df6ad8f.tgz(@effect/cluster@0.57.0(@effect/platform@0.95.0(effect@3.22.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.95.0(effect@3.22.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(effect@3.22.0))(effect@3.22.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/typeclass@0.39.0(effect@3.22.0))
       '@eslint/js':
         specifier: ^9.28.0
         version: 9.39.5
@@ -185,8 +185,8 @@ packages:
       graphql:
         optional: true
 
-  '@ai-hero/sandcastle@file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7-c635e830.tgz':
-    resolution: {integrity: sha512-uqeqpcZhVWh7ZTEpH0YjcbNfxLXoqs4mj2D3WBE5aF22ObqltLgleDHNPBwBfUvjn70QJZullIWD/vpg+3xv7w==, tarball: file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7-c635e830.tgz}
+  '@ai-hero/sandcastle@file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7-1df6ad8f.tgz':
+    resolution: {integrity: sha512-X2LC6zoL9DHZKZYYSQ+uvvFwDx2LoirNwtxq2UMxuNVhgri0VIzvoaz7uXi96r2HmjI3EuS4/17uYEIiLA3RfQ==, tarball: file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7-1df6ad8f.tgz}
     version: 0.5.10
     hasBin: true
     peerDependencies:
@@ -4570,7 +4570,7 @@ snapshots:
 
   '@0no-co/graphql.web@1.3.2': {}
 
-  '@ai-hero/sandcastle@file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7-c635e830.tgz(@effect/cluster@0.57.0(@effect/platform@0.95.0(effect@3.22.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.95.0(effect@3.22.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(effect@3.22.0))(effect@3.22.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/typeclass@0.39.0(effect@3.22.0))':
+  '@ai-hero/sandcastle@file:vendor/ai-hero-sandcastle-0.5.10-d4b7db7-1df6ad8f.tgz(@effect/cluster@0.57.0(@effect/platform@0.95.0(effect@3.22.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.95.0(effect@3.22.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(effect@3.22.0))(effect@3.22.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.95.0(effect@3.22.0))(effect@3.22.0))(@effect/typeclass@0.39.0(effect@3.22.0))':
     dependencies:
       '@clack/prompts': 1.7.0
       '@effect/cli': 0.74.0(@effect/platform@0.95.0(effect@3.22.0))(@effect/printer-ansi@0.48.0(@effect/typeclass@0.39.0(effect@3.22.0))(effect@3.22.0))(@effect/printer@0.48.0(@effect/typeclass@0.39.0(effect@3.22.0))(effect@3.22.0))(effect@3.22.0)

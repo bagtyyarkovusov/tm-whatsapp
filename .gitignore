@@ -17,3 +17,8 @@ logs/
 # Env files
 .env
 .env.local
+# macOS
+.DS_Store
+
+# npm lockfile (this repo uses pnpm)
+package-lock.json
