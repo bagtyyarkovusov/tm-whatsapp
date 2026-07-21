@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "tm-whatsapp",
+    "slug": "tm-whatsapp",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "scheme": "tmwhatsapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "tm.whatsapp.app"
+    },
+    "android": {
+      "package": "tm.whatsapp.app"
+    },
+    "plugins": ["expo-router", "expo-dev-client"],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

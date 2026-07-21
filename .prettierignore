@@ -1,0 +1,10 @@
+node_modules
+.pnpm-store
+dist
+.turbo
+.expo
+coverage
+pnpm-lock.yaml
+vendor
+.sandcastle
+docs

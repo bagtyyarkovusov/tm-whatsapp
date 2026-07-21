@@ -15,19 +15,19 @@ Nothing below is implemented yet. The glossary defines vocabulary that code, iss
 
 ## Glossary
 
-| Term | Meaning | Avoid saying |
-|---|---|---|
-| **Account** | A user's identity, keyed by phone number (`+993XXXXXXXX`). One account → many devices. | "user" when you mean the auth/identity entity |
-| **Device** | One installation linked to an account, with its own Signal identity keypair and auth session. Cap ~5 per account. | "session" for the device itself |
-| **Auth session** | Per-device hashed refresh token with rotation + sliding expiry (auto.tm ADR-0012 pattern). Distinct from Signal sessions. | "login" (it's a thing, not an event) |
-| **Signal session** | A Double Ratchet state between two specific devices. | "encryption session" |
-| **Prekey bundle** | Per-device set of public keys uploaded to the server enabling X3DH session establishment. Server stores these; they are not secret. | "identity keys on the server" (identity *private* keys never leave the device) |
-| **Linked device** | A device added via QR scan + signed approval from an existing device (ADR-0006). Starts with fresh history. | "paired device" |
-| **Ciphertext message** | What the server stores and relays. Opaque to the server by construction. | "message" in server code — always qualify |
-| **Attachment key** | Random per-attachment AES-256 key; media ciphertext lives in MinIO, key travels inside the Signal message (ADR-0008). | "media password" |
-| **Backup key** | User-held 64-digit key encrypting backup blobs. Unrecoverable by the operator — by design (ADR-0007). | "recovery code" |
-| **Degradation ladder** | Call policy: 320×240@15 → scale up → audio-only below threshold, with "poor connection" UI (ADR-0005). | "adaptive bitrate" (that's the mechanism; the ladder is our policy) |
-| **Phase R / Phase TM** | The two hosting phases: Railway pre-approval, in-Turkmenistan post-approval (ADR-0001). | "prod vs staging" |
+| Term                   | Meaning                                                                                                                             | Avoid saying                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Account**            | A user's identity, keyed by phone number (`+993XXXXXXXX`). One account → many devices.                                              | "user" when you mean the auth/identity entity                                  |
+| **Device**             | One installation linked to an account, with its own Signal identity keypair and auth session. Cap ~5 per account.                   | "session" for the device itself                                                |
+| **Auth session**       | Per-device hashed refresh token with rotation + sliding expiry (auto.tm ADR-0012 pattern). Distinct from Signal sessions.           | "login" (it's a thing, not an event)                                           |
+| **Signal session**     | A Double Ratchet state between two specific devices.                                                                                | "encryption session"                                                           |
+| **Prekey bundle**      | Per-device set of public keys uploaded to the server enabling X3DH session establishment. Server stores these; they are not secret. | "identity keys on the server" (identity _private_ keys never leave the device) |
+| **Linked device**      | A device added via QR scan + signed approval from an existing device (ADR-0006). Starts with fresh history.                         | "paired device"                                                                |
+| **Ciphertext message** | What the server stores and relays. Opaque to the server by construction.                                                            | "message" in server code — always qualify                                      |
+| **Attachment key**     | Random per-attachment AES-256 key; media ciphertext lives in MinIO, key travels inside the Signal message (ADR-0008).               | "media password"                                                               |
+| **Backup key**         | User-held 64-digit key encrypting backup blobs. Unrecoverable by the operator — by design (ADR-0007).                               | "recovery code"                                                                |
+| **Degradation ladder** | Call policy: 320×240@15 → scale up → audio-only below threshold, with "poor connection" UI (ADR-0005).                              | "adaptive bitrate" (that's the mechanism; the ladder is our policy)            |
+| **Phase R / Phase TM** | The two hosting phases: Railway pre-approval, in-Turkmenistan post-approval (ADR-0001).                                             | "prod vs staging"                                                              |
 
 ## Architectural invariants (enforced once code exists)
 

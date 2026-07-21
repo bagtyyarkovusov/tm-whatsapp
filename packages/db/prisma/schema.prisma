@@ -1,0 +1,59 @@
+// Prisma schema — home of all persistence for tm-whatsapp.
+// Device-aware from day one (CONTEXT.md invariant #2, ADR-0006):
+// Account → N Device → N PrekeyBundle. Never collapse to single-device shape.
+// The server never stores plaintext or private key material (invariant #1).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// A user's identity, keyed by phone number (+993XXXXXXXX).
+model Account {
+  id           String   @id @default(uuid())
+  /// E.164 phone number, e.g. +9936XXXXXXX
+  phoneNumber  String   @unique @map("phone_number")
+  createdAt    DateTime @default(now()) @map("created_at")
+  devices      Device[]
+
+  @@map("accounts")
+}
+
+/// One installation linked to an account, with its own Signal identity keypair
+/// and auth session. Cap ~5 per account (ADR-0006).
+model Device {
+  id                 String         @id @default(uuid())
+  accountId          String         @map("account_id")
+  account            Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// Signal identity PUBLIC key for this device. Private keys never leave the device.
+  identityKeyPublic  Bytes          @map("identity_key_public")
+  /// Human-facing label, e.g. "iPhone 15".
+  label              String?
+  createdAt          DateTime       @default(now()) @map("created_at")
+  lastSeenAt         DateTime?      @map("last_seen_at")
+  prekeyBundles      PrekeyBundle[]
+
+  @@map("devices")
+}
+
+/// Per-device set of public prekeys enabling X3DH session establishment (ADR-0003).
+/// Stored server-side; these are public keys and not secret.
+model PrekeyBundle {
+  id                String   @id @default(uuid())
+  deviceId          String   @map("device_id")
+  device            Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  /// Signed prekey (public part).
+  signedPrekey      Bytes    @map("signed_prekey")
+  signedPrekeyId    Int      @map("signed_prekey_id")
+  signedPrekeySig   Bytes    @map("signed_prekey_sig")
+  /// One-time prekey (public part); null once consumed.
+  oneTimePrekey     Bytes?   @map("one_time_prekey")
+  oneTimePrekeyId   Int?     @map("one_time_prekey_id")
+  uploadedAt        DateTime @default(now()) @map("uploaded_at")
+
+  @@map("prekey_bundles")
+}
