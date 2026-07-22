@@ -4,8 +4,7 @@
 // The server never stores plaintext or private key material (invariant #1).
 
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 datasource db {

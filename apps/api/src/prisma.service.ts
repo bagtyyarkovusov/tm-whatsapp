@@ -14,9 +14,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     if (process.env.DATABASE_URL) {
       try {
         await this.$connect();
-      } catch (error) {
+      } catch {
         this.logger.warn(
-          { error: (error as Error).message },
           "Initial database connection failed; API will start and /health/ready will report degraded",
         );
       }
