@@ -2,7 +2,7 @@
 
 # Local development / CI image for the tm-whatsapp API.
 # Built from the repo root so pnpm workspace resolution works.
-FROM node:20-alpine
+FROM node:20-slim
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
