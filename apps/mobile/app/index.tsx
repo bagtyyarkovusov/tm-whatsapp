@@ -8,18 +8,12 @@ export default function Index() {
   const { locale, setLocale } = useLocale();
 
   return (
-    <View className="flex-1 items-center justify-center bg-white dark:bg-black">
-      <Text
-        accessibilityLabel={t("app.name")}
-        className="text-2xl font-bold text-slate-900 dark:text-slate-100"
-      >
+    <View className="flex-1 items-center justify-center bg-chat-bg p-lg">
+      <Text accessibilityLabel={t("app.name")} className="text-2xl font-bold text-on-background">
         {t("app.name")}
       </Text>
-      <Text className="mt-2 text-base text-slate-500">{t("app.tagline")}</Text>
-      <Text
-        accessibilityRole="header"
-        className="mt-8 text-sm font-semibold uppercase text-slate-400"
-      >
+      <Text className="mt-sm text-base text-muted">{t("app.tagline")}</Text>
+      <Text accessibilityRole="header" className="mt-8 text-sm font-semibold uppercase text-muted">
         {t("settings.language.label")}
       </Text>
       <View className="mt-2 flex-row gap-2">
@@ -30,19 +24,11 @@ export default function Index() {
             accessibilityLabel={t(`settings.language.${option}`)}
             accessibilityState={{ selected: option === locale }}
             onPress={() => setLocale(option)}
-            className={`rounded-full px-4 py-2 ${
-              option === locale
-                ? "bg-slate-900 dark:bg-slate-100"
-                : "bg-slate-200 dark:bg-slate-800"
+            className={`items-center justify-center rounded-lg px-4 py-2 ${
+              option === locale ? "bg-primary" : "bg-surface border border-border"
             }`}
           >
-            <Text
-              className={
-                option === locale
-                  ? "text-white dark:text-black"
-                  : "text-slate-900 dark:text-slate-100"
-              }
-            >
+            <Text className={option === locale ? "text-white" : "text-on-surface"}>
               {t(`settings.language.${option}`)}
             </Text>
           </Pressable>

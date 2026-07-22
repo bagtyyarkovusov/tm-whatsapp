@@ -50,8 +50,13 @@ function* walk(dir) {
   for (const entry of readdirSync(dir)) {
     if (entry === "node_modules" || entry.startsWith(".")) continue;
     const full = join(dir, entry);
-    if (statSync(full).isDirectory()) yield* walk(full);
-    else if (/\.tsx$/.test(entry)) yield full;
+    if (statSync(full).isDirectory()) {
+      // Test infrastructure does not contain user-facing copy.
+      if (entry === "test") continue;
+      yield* walk(full);
+    } else if (/\.tsx$/.test(entry) && !entry.endsWith(".test.tsx")) {
+      yield full;
+    }
   }
 }
 

@@ -6,7 +6,8 @@
 
 **Scaffolded; no end-user feature is complete.** What exists:
 
-- `docs/adr/0001–0010` — all foundational architecture decisions, accepted 2026-07-20 (founding grilling session)
+- `docs/adr/0001–0011` — all foundational architecture decisions, accepted 2026-07-20 (founding grilling session)
+- `docs/adr/0012-mobile-data-state-architecture.md` — accepted 2026-07-22; records mobile server-state, socket cache mutator, client-state, and encrypted local-store boundaries
 - `docs/prd/00-vision.md`, `docs/prd/01-roadmap.md` — product vision and five-phase roadmap
 - pnpm/Turbo strict-TypeScript monorepo with NestJS API, Expo mobile, and shared db/contracts/crypto package homes
 - health endpoint, initial device-aware Prisma models, shared health/phone contracts, and type-only crypto interfaces
@@ -16,6 +17,7 @@
 - CI for build, typecheck, lint, formatting, unit tests, and Compose smoke acceptance
 - Sandcastle orchestration for issue-driven agents; Phase 1 agent-readiness hardening is in progress
 - `docs/agents/` — issue tracker, readiness, triage-label, and domain-doc conventions
+- `docs/ui/README.md` — Phase 1 mobile UI tokens, component kit, and screen reference for agents
 - GitHub Phase 1 issue tree on `bagtyyarkovusov/tm-whatsapp`
 
 OTP, real Signal Protocol cryptography, messaging, contact discovery, push,
