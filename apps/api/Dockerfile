@@ -17,6 +17,10 @@ COPY packages/contracts/package.json ./packages/contracts/
 COPY packages/db/package.json ./packages/db/
 COPY packages/crypto/package.json ./packages/crypto/
 
+# The root package.json references a vendored tarball; preserve that path for
+# pnpm's file: resolver before installing.
+COPY vendor ./vendor
+
 # Install dependencies. The lockfile is frozen so CI and local builds match.
 RUN pnpm install --frozen-lockfile
 
