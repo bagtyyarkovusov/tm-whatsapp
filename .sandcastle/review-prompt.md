@@ -1,6 +1,8 @@
 # TASK
 
 Review issue #{{TASK_ID}} ({{ISSUE_TITLE}}) on branch `{{BRANCH}}`.
+This is a read-only review. Do not edit files or create commits; any reviewer
+commit makes the result unpublishable until another independent review runs.
 
 Fetch the current issue body and comments. Review the implementation against
 every agent-verifiable acceptance item, not merely against the diff. Confirm
@@ -82,8 +84,6 @@ Before approving this branch for merge, verify ALL of the following:
 If ANY check or acceptance item fails, reject the PR and output the exact errors.
 An implementer statement such as "not tested", a substituted acceptance check,
 or a missing required deployment is a rejection.
-
-If the code is already clean and well-structured, do nothing.
 
 Approve only when every check passes by outputting exactly:
 

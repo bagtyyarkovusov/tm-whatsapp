@@ -8,9 +8,10 @@ Only work on the issue specified.
 
 Work on branch {{BRANCH}}. Make commits and run tests.
 
-Before editing, verify that the issue is unassigned and every `Blocked by:`
-dependency is closed. Assign yourself and comment with this branch and a concise
-execution plan. If the issue is already claimed, stop as incomplete.
+Before editing, verify that the issue is unassigned, native GitHub dependencies
+agree with the mirrored `Blocked by:` line, and every dependency is closed.
+Assign yourself and comment with this branch and a concise execution plan. If
+the issue is already claimed or dependency metadata disagrees, stop incomplete.
 
 # CONTEXT
 

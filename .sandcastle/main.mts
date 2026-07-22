@@ -89,8 +89,22 @@ const HOST_ENV = { ...process.env, ...(await readSandcastleEnv()) };
 // plan→execute→publish cycles before stopping. Override for a quick smoke test:
 //   MAX_ITERATIONS=1 npm run sandcastle
 const MAX_ITERATIONS = Number(HOST_ENV.MAX_ITERATIONS ?? 10);
-const MAX_CONCURRENT_ISSUES = Number(
-  HOST_ENV.SANDCASTLE_MAX_CONCURRENT_ISSUES ?? 2,
+const MAX_CONCURRENT_ISSUES = Math.max(
+  1,
+  Math.min(2, Number(HOST_ENV.SANDCASTLE_MAX_CONCURRENT_ISSUES ?? 2)),
+);
+
+const DISJOINT_ISSUE_PAIRS = new Set(
+  (HOST_ENV.SANDCASTLE_DISJOINT_ISSUE_PAIRS ?? "")
+    .split(",")
+    .map((pair) =>
+      pair
+        .split(":")
+        .map((id) => id.trim())
+        .sort((a, b) => Number(a) - Number(b))
+        .join(":"),
+    )
+    .filter(Boolean),
 );
 
 const KIMI_API_KEY = HOST_ENV.KIMI_API_KEY;
@@ -279,17 +293,113 @@ const WITHOUT_RAILWAY_ENV = Object.fromEntries(
   RAILWAY_ENV_KEYS.map((key) => [key, ""]),
 );
 
-const issueRequiresRailway = async (issueId: string) => {
-  const { stdout } = await execFileAsync("gh", [
+const RAILWAY_ISSUE_ENV = {
+  ...WITHOUT_RAILWAY_ENV,
+  RAILWAY_TOKEN: HOST_ENV.RAILWAY_TOKEN ?? "",
+  RAILWAY_PROJECT_ID: HOST_ENV.RAILWAY_PROJECT_ID ?? "",
+  RAILWAY_ENVIRONMENT_ID: HOST_ENV.RAILWAY_ENVIRONMENT_ID ?? "",
+};
+
+type IssueWorkItem = { id: string; title: string; branch: string };
+
+type IssueExecutionMetadata = {
+  body: string;
+  requiresRailway: boolean;
+};
+
+const REQUIRED_ISSUE_SECTIONS = [
+  "Outcome",
+  "In scope",
+  "Out of scope",
+  "Decisions already settled",
+  "Local context",
+  "Agent environment",
+  "Acceptance — agent-verifiable",
+  "Human validation",
+  "Rollback and observability",
+] as const;
+
+const parseMirroredBlockers = (body: string) => {
+  const line = body.match(/^Blocked by:\s*(.+)$/im)?.[1]?.trim();
+  if (!line) throw new Error("missing mirrored `Blocked by:` line");
+  if (/^None\.?$/i.test(line)) return [];
+  const issueNumbers = [...line.matchAll(/#(\d+)/g)].map((match) => match[1]!);
+  if (issueNumbers.length === 0) {
+    throw new Error("mirrored `Blocked by:` line contains no issue numbers");
+  }
+  return [...new Set(issueNumbers)].sort((a, b) => Number(a) - Number(b));
+};
+
+const validateIssueContract = (body: string) => {
+  const headings = new Set(
+    [...body.matchAll(/^##\s+(.+?)\s*$/gm)].map((match) => match[1]),
+  );
+  for (const section of REQUIRED_ISSUE_SECTIONS) {
+    if (!headings.has(section)) {
+      throw new Error(`missing required issue section: ${section}`);
+    }
+  }
+
+  if (!/^##\s+Human validation\s*\n+\s*None\.?\s*$/im.test(body)) {
+    throw new Error("Human validation must be exactly `None`");
+  }
+};
+
+const getIssueExecutionMetadata = async (
+  issue: IssueWorkItem,
+): Promise<IssueExecutionMetadata> => {
+  const { stdout: issueJson } = await execFileAsync("gh", [
     "issue",
     "view",
-    issueId,
+    issue.id,
     "--json",
-    "body",
-    "--jq",
-    ".body",
+    "body,state,labels,assignees,title",
   ]);
-  return /^requires_railway:\s*true\s*$/im.test(stdout);
+  const metadata = JSON.parse(issueJson) as {
+    body: string;
+    state: string;
+    title: string;
+    labels: { name: string }[];
+    assignees: { login: string }[];
+  };
+
+  if (metadata.state !== "OPEN") throw new Error("issue is not open");
+  if (!metadata.labels.some((label) => label.name === "ready-for-agent")) {
+    throw new Error("issue is missing `ready-for-agent`");
+  }
+  if (metadata.assignees.length > 0) throw new Error("issue is already assigned");
+  if (metadata.title !== issue.title) throw new Error("planner returned a stale issue title");
+  validateIssueContract(metadata.body);
+
+  const { stdout: repository } = await execFileAsync("gh", [
+    "repo",
+    "view",
+    "--json",
+    "nameWithOwner",
+    "--jq",
+    ".nameWithOwner",
+  ]);
+  const { stdout: blockersJson } = await execFileAsync("gh", [
+    "api",
+    `repos/${repository.trim()}/issues/${issue.id}/dependencies/blocked_by`,
+    "--paginate",
+  ]);
+  const nativeBlockers = (JSON.parse(blockersJson) as { number: number; state: string }[])
+    .map((blocker) => ({ number: String(blocker.number), state: blocker.state }))
+    .sort((a, b) => Number(a.number) - Number(b.number));
+  const mirroredBlockers = parseMirroredBlockers(metadata.body);
+
+  if (nativeBlockers.map((blocker) => blocker.number).join(",") !== mirroredBlockers.join(",")) {
+    throw new Error("native blockers and mirrored `Blocked by:` line disagree");
+  }
+  if (nativeBlockers.some((blocker) => blocker.state !== "closed")) {
+    throw new Error("issue has an open native blocker");
+  }
+
+  return {
+    body: metadata.body,
+    requiresRailway: /^requires_railway:\s*true\s*$/im.test(metadata.body),
+  };
 };
 
 const getWorktreeForBranch = async (branch: string) => {
@@ -347,11 +457,7 @@ const prepareIssueBranch = async (issue: { id: string; branch: string }) => {
   await execGit(["branch", "-f", issue.branch, baseHead]);
 };
 
-const publishIssuePullRequest = async (issue: {
-  id: string;
-  title: string;
-  branch: string;
-}) => {
+const publishIssuePullRequest = async (issue: IssueWorkItem) => {
   await execFileAsync("gh", ["auth", "setup-git"]);
   await execFileAsync("git", ["push", "--set-upstream", "origin", issue.branch]);
 
@@ -481,9 +587,15 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     .replace(/\\"/g, '"')
     .replace(/\\t/g, "\t")
     .trim();
-  const parsedPlan = JSON.parse(planJson) as {
-    issues: { id: string; title: string; branch: string }[];
-  };
+  const parsedPlan = JSON.parse(planJson) as { issues: IssueWorkItem[] };
+  if (!Array.isArray(parsedPlan.issues)) {
+    throw new Error("Planner returned an invalid issues list.");
+  }
+  for (const issue of parsedPlan.issues) {
+    if (!/^\d+$/.test(issue.id) || !issue.title?.trim()) {
+      throw new Error("Planner returned an invalid issue id or title.");
+    }
+  }
   // Canonicalize branch names so planner slug drift cannot create duplicates.
   const issues = parsedPlan.issues.slice(0, MAX_CONCURRENT_ISSUES).map((issue) => {
     const branch = canonicalIssueBranch(issue);
@@ -495,15 +607,49 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     return { ...issue, branch };
   });
 
-  if (issues.length === 0) {
+  if (new Set(issues.map((issue) => issue.id)).size !== issues.length) {
+    throw new Error("Planner returned the same issue more than once.");
+  }
+
+  if (issues.length === 2) {
+    const pair = issues
+      .map((issue) => issue.id)
+      .sort((a, b) => Number(a) - Number(b))
+      .join(":");
+    if (!DISJOINT_ISSUE_PAIRS.has(pair)) {
+      console.warn(
+        `Planner selected unapproved concurrent pair ${pair}; executing only #${issues[0]!.id}.`,
+      );
+      issues.splice(1);
+    }
+  }
+
+  const eligibleIssues: Array<{
+    issue: IssueWorkItem;
+    metadata: IssueExecutionMetadata;
+  }> = [];
+  for (const issue of issues) {
+    try {
+      eligibleIssues.push({
+        issue,
+        metadata: await getIssueExecutionMetadata(issue),
+      });
+    } catch (error) {
+      console.warn(
+        `[${issue.id}] rejected by deterministic readiness gate: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (eligibleIssues.length === 0) {
     console.log("No unblocked issues to work on. Exiting.");
     break;
   }
 
   console.log(
-    `Planning complete. ${issues.length} issue(s) to work in parallel:`,
+    `Planning complete. ${eligibleIssues.length} issue(s) to work in parallel:`,
   );
-  for (const issue of issues) {
+  for (const { issue } of eligibleIssues) {
     console.log(`  ${issue.id}: ${issue.title} → ${issue.branch}`);
   }
 
@@ -511,14 +657,13 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // Phase 2: Execute + Review (one sandbox per issue, shared by both roles)
   // -------------------------------------------------------------------------
   const settled = await Promise.allSettled(
-    issues.map(async (issue) => {
+    eligibleIssues.map(async ({ issue, metadata }) => {
       await prepareIssueBranch(issue);
       console.log(`[${issue.id}] creating sandbox for ${issue.branch}...`);
-      const requiresRailway = await issueRequiresRailway(issue.id);
       const sandbox = await sandcastle.createSandbox({
         branch: issue.branch,
         sandbox: docker({
-          env: requiresRailway ? {} : WITHOUT_RAILWAY_ENV,
+          env: metadata.requiresRailway ? RAILWAY_ISSUE_ENV : WITHOUT_RAILWAY_ENV,
         }),
         copyToWorktree,
         hooks: implementerHooks,
@@ -575,10 +720,16 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
             }),
           );
 
+          const reviewerChangedCode = review.commits.length > 0;
+          if (reviewerChangedCode) {
+            console.warn(
+              `[${issue.id}] rejected: reviewer authored commits that were not independently reviewed.`,
+            );
+          }
           return {
             approved:
-              review.completionSignal ===
-              "<review-result>APPROVED</review-result>",
+              !reviewerChangedCode &&
+              review.completionSignal === "<review-result>APPROVED</review-result>",
             commits: [...implement.commits, ...review.commits],
           };
         }
@@ -596,14 +747,14 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   for (const [i, outcome] of settled.entries()) {
     if (outcome.status === "rejected") {
       console.error(
-        `  ✗ ${issues[i]!.id} (${issues[i]!.branch}) failed: ${outcome.reason}`,
+        `  ✗ ${eligibleIssues[i]!.issue.id} (${eligibleIssues[i]!.issue.branch}) failed: ${outcome.reason}`,
       );
     }
   }
 
   // Only explicitly completed and independently approved branches are published.
   const approvedIssues = settled
-    .map((outcome, i) => ({ outcome, issue: issues[i]! }))
+    .map((outcome, i) => ({ outcome, issue: eligibleIssues[i]!.issue }))
     .filter(
       (entry) =>
         entry.outcome.status === "fulfilled" &&

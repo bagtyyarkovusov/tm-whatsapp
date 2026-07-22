@@ -22,6 +22,7 @@ require_command gh
 require_command jq
 require_command node
 require_command pnpm
+require_command claude
 
 gh auth status >/dev/null 2>&1 || {
   echo "preflight failed: GitHub CLI is not authenticated" >&2
@@ -30,6 +31,15 @@ gh auth status >/dev/null 2>&1 || {
 
 if [[ ! -f .mcp.json ]] || ! jq -e '.mcpServers.context7' .mcp.json >/dev/null; then
   echo "preflight failed: project Context7 MCP configuration is missing" >&2
+  exit 1
+fi
+
+mcp_status="$(claude mcp list 2>&1)" || {
+  echo "preflight failed: Claude Code could not list MCP servers" >&2
+  exit 1
+}
+if ! grep -Eiq 'context7.*connected' <<<"$mcp_status"; then
+  echo "preflight failed: Context7 is not connected" >&2
   exit 1
 fi
 
@@ -63,23 +73,18 @@ resolved_project_id="$(jq -r '.id // .project.id // .projectId // empty' "$statu
 resolved_environment_id="$(jq -r '.environment.id // .environmentId // empty' "$status_file")"
 resolved_environment_name="$(jq -r '.environment.name // .environment // empty' "$status_file")"
 
-if [[ -n "$resolved_project_id" && "$resolved_project_id" != "$RAILWAY_PROJECT_ID" ]]; then
+if [[ -z "$resolved_project_id" || "$resolved_project_id" != "$RAILWAY_PROJECT_ID" ]]; then
   echo "preflight failed: Railway resolved an unexpected project" >&2
   exit 1
 fi
 
-if [[ -n "$resolved_environment_id" && "$resolved_environment_id" != "$RAILWAY_ENVIRONMENT_ID" ]]; then
+if [[ -z "$resolved_environment_id" || "$resolved_environment_id" != "$RAILWAY_ENVIRONMENT_ID" ]]; then
   echo "preflight failed: Railway resolved an unexpected environment" >&2
   exit 1
 fi
 
-if [[ "$resolved_environment_name" == "production" ]]; then
-  echo "preflight failed: production Railway access is forbidden" >&2
-  exit 1
-fi
-
-if [[ -z "$resolved_environment_id" && -z "$resolved_environment_name" ]]; then
-  echo "preflight failed: Railway status did not resolve an environment" >&2
+if [[ "$resolved_environment_name" != "development" ]]; then
+  echo "preflight failed: Railway target is not the development environment" >&2
   exit 1
 fi
 
