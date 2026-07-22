@@ -17,6 +17,7 @@ coverage
 # Agent/orchestration files not needed at runtime
 .sandcastle
 vendor
+!vendor/ai-hero-sandcastle-*.tgz
 docs
 
 # Mobile native tooling and logs
