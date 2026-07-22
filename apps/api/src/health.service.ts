@@ -5,8 +5,7 @@ import Redis from "ioredis";
 
 import { PrismaService } from "./prisma.service";
 
-const REDIS_TIMEOUT_MS = 3000;
-const S3_TIMEOUT_MS = 3000;
+const DEPENDENCY_TIMEOUT_MS = 3000;
 
 /**
  * Dependency readiness probes for `/health/ready`.
@@ -25,8 +24,8 @@ export class HealthService {
     if (redisUrl) {
       this.redis = new Redis(redisUrl, {
         lazyConnect: true,
-        connectTimeout: REDIS_TIMEOUT_MS,
-        commandTimeout: REDIS_TIMEOUT_MS,
+        connectTimeout: DEPENDENCY_TIMEOUT_MS,
+        commandTimeout: DEPENDENCY_TIMEOUT_MS,
         maxRetriesPerRequest: 0,
       });
     }
@@ -44,18 +43,34 @@ export class HealthService {
         },
         forcePathStyle: true,
         requestHandler: {
-          requestTimeout: S3_TIMEOUT_MS,
+          requestTimeout: DEPENDENCY_TIMEOUT_MS,
         },
       });
     }
   }
 
+  private async withTimeout<T>(operation: Promise<T>): Promise<T> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error("dependency readiness probe timed out")),
+        DEPENDENCY_TIMEOUT_MS,
+      );
+    });
+
+    try {
+      return await Promise.race([operation, deadline]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
   async checkPostgres(): Promise<boolean> {
     try {
-      await this.prisma.$queryRaw`SELECT 1`;
+      await this.withTimeout(this.prisma.$queryRaw`SELECT 1`);
       return true;
-    } catch (error) {
-      this.logger.warn({ error: (error as Error).message }, "Postgres readiness probe failed");
+    } catch {
+      this.logger.warn("Postgres readiness probe failed");
       return false;
     }
   }
@@ -65,15 +80,19 @@ export class HealthService {
       return false;
     }
     try {
-      await this.redis.ping();
+      await this.withTimeout(this.redis.ping());
       return true;
     } catch {
       try {
-        await this.redis.connect();
-        await this.redis.ping();
+        await this.withTimeout(
+          (async () => {
+            await this.redis!.connect();
+            await this.redis!.ping();
+          })(),
+        );
         return true;
-      } catch (error) {
-        this.logger.warn({ error: (error as Error).message }, "Redis readiness probe failed");
+      } catch {
+        this.logger.warn("Redis readiness probe failed");
         return false;
       }
     }
@@ -84,10 +103,10 @@ export class HealthService {
       return false;
     }
     try {
-      await this.s3.send(new ListBucketsCommand({}));
+      await this.withTimeout(this.s3.send(new ListBucketsCommand({})));
       return true;
-    } catch (error) {
-      this.logger.warn({ error: (error as Error).message }, "MinIO readiness probe failed");
+    } catch {
+      this.logger.warn("MinIO readiness probe failed");
       return false;
     }
   }
