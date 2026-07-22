@@ -41,3 +41,39 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build --file apps/api/Dockerfile --tag tm-whatsapp-api:test .
+
+      - name: Validate Compose config
+        run: docker compose config --quiet
+
+      - name: Start Compose stack
+        run: docker compose up --wait --wait-timeout 120
+
+      - name: Check API liveness
+        run: curl --fail http://127.0.0.1:3000/health/live
+
+      - name: Check API readiness
+        run: curl --fail http://127.0.0.1:3000/health/ready
+
+      - name: Run Compose smoke tests
+        run: ./scripts/compose-smoke.sh
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --tail 50 api || true
+          docker compose logs --tail 30 postgres || true
+          docker compose logs --tail 30 redis || true
+          docker compose logs --tail 30 minio || true
+
+      - name: Teardown
+        if: always()
+        run: docker compose down --remove-orphans
