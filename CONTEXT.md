@@ -16,6 +16,7 @@
 - CI for build, typecheck, lint, formatting, unit tests, and Compose smoke acceptance
 - Sandcastle orchestration for issue-driven agents; Phase 1 agent-readiness hardening is in progress
 - `docs/agents/` — issue tracker, readiness, triage-label, and domain-doc conventions
+- `docs/ui/README.md` — Phase 1 mobile UI tokens, component kit, and screen reference for agents
 - GitHub Phase 1 issue tree on `bagtyyarkovusov/tm-whatsapp`
 
 OTP, real Signal Protocol cryptography, messaging, contact discovery, push,

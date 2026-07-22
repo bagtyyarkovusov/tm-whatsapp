@@ -1,3 +1,36 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --color-primary: 0 168 132;
+  --color-primary-emphasis: 0 128 105;
+
+  --color-background: 255 255 255;
+  --color-surface: 255 255 255;
+  --color-chat-bg: 229 221 213;
+  --color-incoming: 255 255 255;
+  --color-outgoing: 217 253 211;
+
+  --color-on-background: 17 27 33;
+  --color-on-surface: 17 27 33;
+  --color-muted: 102 119 129;
+  --color-border: 209 215 219;
+
+  --color-status: 83 189 235;
+  --color-danger: 234 0 56;
+  --color-warning: 240 165 0;
+}
+
+.dark {
+  --color-background: 11 20 26;
+  --color-surface: 17 27 33;
+  --color-chat-bg: 11 20 26;
+  --color-incoming: 32 44 51;
+  --color-outgoing: 0 92 75;
+
+  --color-on-background: 233 237 239;
+  --color-on-surface: 233 237 239;
+  --color-muted: 134 150 160;
+  --color-border: 49 61 69;
+}
