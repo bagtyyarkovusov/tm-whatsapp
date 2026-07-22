@@ -1,0 +1,8 @@
+{
+  "app.name": "tm-whatsapp",
+  "app.tagline": "E2EE-мессенджер для Туркменистана — каркас фазы 1",
+  "settings.language.label": "Язык",
+  "settings.language.en": "English",
+  "settings.language.ru": "Русский",
+  "settings.language.tk": "Türkmençe"
+}

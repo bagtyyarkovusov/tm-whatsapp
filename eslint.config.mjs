@@ -26,4 +26,14 @@ export default tseslint.config(
       "@typescript-eslint/no-require-imports": "off",
     },
   },
+  {
+    // Node CLI scripts (e.g. apps/mobile/scripts/*.mjs CI gates).
+    files: ["**/scripts/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        process: "readonly",
+      },
+    },
+  },
 );
