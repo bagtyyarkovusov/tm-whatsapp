@@ -16,7 +16,7 @@ coverage
 
 # Agent/orchestration files not needed at runtime
 .sandcastle
-vendor
+vendor/*
 !vendor/ai-hero-sandcastle-*.tgz
 docs
 
