@@ -14,5 +14,9 @@ Single-context repo: ADRs live here at `docs/adr/`; current implemented state li
 | [0008](0008-media-pipeline.md) | Media: client-side encrypt + compress, dumb ciphertext server | Accepted | 2026-07-20 |
 | [0009](0009-auth-otp-sms-gateway.md) | Auth: SMS OTP via Android phone-fleet gateway (auto.tm pattern) | Accepted | 2026-07-20 |
 | [0010](0010-contact-discovery-and-abuse.md) | Contact discovery (hashed + QR) and reporter-side abuse reports | Accepted | 2026-07-20 |
+| [0011](0011-provisional-device-activation.md) | Provisional Device activation and expiry | Accepted | 2026-07-22 |
 
-All ten originate from the founding grilling session (2026-07-20). The sister project's ADRs at `~/Projects/auto.tm-rewrite/docs/adr/` are cross-referenced throughout; auto.tm ADR-0005 (air-gapped TM hosting) is the end-state model for ADR-0001 here.
+ADRs 0001–0010 originate from the founding grilling session (2026-07-20). ADR-0011 was accepted during Phase 1 implementation (2026-07-22). The sister project's ADRs at `~/Projects/auto.tm-rewrite/docs/adr/` are cross-referenced throughout; auto.tm ADR-0005 (air-gapped TM hosting) is the end-state model for ADR-0001 here.
+
+ADR-0011 amends ADR-0009's auth-session issuance timing and ADR-0003's backend
+cryptography boundary for public signed-prekey verification during activation.
