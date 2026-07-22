@@ -4,6 +4,11 @@
 # Built from the repo root so pnpm workspace resolution works.
 FROM node:20-slim
 
+# Prisma's engine detection needs the openssl CLI; curl is used by health checks.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/*
+
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
@@ -20,6 +25,10 @@ COPY packages/crypto/package.json ./packages/crypto/
 # The root package.json references a vendored tarball; preserve that path for
 # pnpm's file: resolver before installing.
 COPY vendor ./vendor
+
+# Prisma's postinstall generates the query engine; give it the schema and
+# openssl so it picks the correct debian-openssl-3.0.x engine.
+COPY packages/db/prisma ./packages/db/prisma
 
 # Install dependencies. The lockfile is frozen so CI and local builds match.
 RUN pnpm install --frozen-lockfile
