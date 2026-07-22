@@ -64,14 +64,15 @@ caller="skill:use-railway@1.1.3"
 status_file="$(mktemp)"
 trap 'rm -f "$status_file"' EXIT
 
-RAILWAY_CALLER="$caller" RAILWAY_AGENT_SESSION="$session_id" \
-  railway whoami --json >/dev/null
+# whoami requires user OAuth and always fails for least-privilege project
+# tokens (issue #13 amendment); `railway status` already proves the token
+# authenticates and resolves the pinned project/environment.
 RAILWAY_CALLER="$caller" RAILWAY_AGENT_SESSION="$session_id" \
   railway status --json >"$status_file"
 
 resolved_project_id="$(jq -r '.id // .project.id // .projectId // empty' "$status_file")"
-resolved_environment_id="$(jq -r '.environment.id // .environmentId // empty' "$status_file")"
-resolved_environment_name="$(jq -r '.environment.name // .environment // empty' "$status_file")"
+resolved_environment_id="$(jq -r '.environment.id // .environmentId // .environments.edges[0].node.id // empty' "$status_file")"
+resolved_environment_name="$(jq -r '.environment.name // .environment // .environments.edges[0].node.name // empty' "$status_file")"
 
 if [[ -z "$resolved_project_id" || "$resolved_project_id" != "$RAILWAY_PROJECT_ID" ]]; then
   echo "preflight failed: Railway resolved an unexpected project" >&2
@@ -85,6 +86,14 @@ fi
 
 if [[ "$resolved_environment_name" != "development" ]]; then
   echo "preflight failed: Railway target is not the development environment" >&2
+  exit 1
+fi
+
+# Production rejection proof: the least-privilege token must not see any
+# environment beyond the pinned development one.
+visible_environments="$(jq '[.environments.edges[]? | select(.node.canAccess == true)] | length' "$status_file")"
+if [[ "$visible_environments" != "1" && "$visible_environments" != "0" ]]; then
+  echo "preflight failed: Railway token can access more than the pinned environment" >&2
   exit 1
 fi
 
