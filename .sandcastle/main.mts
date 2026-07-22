@@ -312,12 +312,32 @@ const REQUIRED_ISSUE_SECTIONS = [
   "In scope",
   "Out of scope",
   "Decisions already settled",
+  "Dependencies",
   "Local context",
   "Agent environment",
   "Acceptance — agent-verifiable",
   "Human validation",
   "Rollback and observability",
 ] as const;
+
+const parseIssueSections = (body: string) => {
+  const headings = [...body.matchAll(/^(#{2,3})\s+(.+?)\s*$/gm)];
+  const sections = new Map<string, string>();
+
+  for (const [index, heading] of headings.entries()) {
+    const level = heading[1]!.length;
+    const nextHeading = headings
+      .slice(index + 1)
+      .find((candidate) => candidate[1]!.length <= level);
+    const contentStart = heading.index! + heading[0].length;
+    sections.set(
+      heading[2]!,
+      body.slice(contentStart, nextHeading?.index ?? body.length).trim(),
+    );
+  }
+
+  return sections;
+};
 
 const parseMirroredBlockers = (body: string) => {
   const line = body.match(/^Blocked by:\s*(.+)$/im)?.[1]?.trim();
@@ -331,17 +351,37 @@ const parseMirroredBlockers = (body: string) => {
 };
 
 const validateIssueContract = (body: string) => {
-  const headings = new Set(
-    [...body.matchAll(/^##\s+(.+?)\s*$/gm)].map((match) => match[1]),
-  );
+  const sections = parseIssueSections(body);
   for (const section of REQUIRED_ISSUE_SECTIONS) {
-    if (!headings.has(section)) {
+    const content = sections.get(section);
+    if (!content) {
       throw new Error(`missing required issue section: ${section}`);
+    }
+    if (/^(?:tbd|todo|placeholder|-)\.?$/i.test(content)) {
+      throw new Error(`placeholder content in required issue section: ${section}`);
     }
   }
 
-  if (!/^##\s+Human validation\s*\n+\s*None\.?\s*$/im.test(body)) {
+  if (!/^None\.?$/i.test(sections.get("Human validation")!)) {
     throw new Error("Human validation must be exactly `None`");
+  }
+  if (!/^Blocked by:\s*(?:None\.?|#\d+(?:\s*,\s*#\d+)*)$/im.test(sections.get("Dependencies")!)) {
+    throw new Error("Dependencies must contain only the canonical `Blocked by:` line");
+  }
+  if (!/scripts\/agent-preflight\.sh(?:\s+--railway)?/.test(sections.get("Agent environment")!)) {
+    throw new Error("Agent environment must declare the exact preflight command");
+  }
+  if (!/- \[ \]/.test(sections.get("Acceptance — agent-verifiable")!)) {
+    throw new Error("Acceptance must contain unchecked agent-verifiable checkboxes");
+  }
+  if (!/`[^`\n]+`/.test(sections.get("Acceptance — agent-verifiable")!)) {
+    throw new Error("Acceptance must contain at least one exact command");
+  }
+  if (
+    /^requires_railway:\s*true\s*$/im.test(body) &&
+    !/scripts\/agent-preflight\.sh\s+--railway/.test(sections.get("Agent environment")!)
+  ) {
+    throw new Error("Railway issues must declare the Railway preflight command");
   }
 };
 

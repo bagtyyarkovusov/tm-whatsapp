@@ -47,17 +47,14 @@ validation was silently substituted.
    - Remove helpful abstractions that improve code organization
    - Make the code harder to debug or extend
 
-5. **Apply project standards**: Follow the coding standards defined in @.sandcastle/CODING_STANDARDS.md
+5. **Apply project standards**: Follow `AGENTS.md` and every repository standard it references.
 
-6. **Preserve functionality**: Never change what the code does - only how it does it. All original features, outputs, and behaviors must remain intact.
+6. **Preserve functionality**: Evaluate the submitted behavior without changing it.
 
 # EXECUTION
 
-If you find improvements to make:
-
-1. Make the changes directly on this branch
-2. Run tests and type checking to ensure nothing is broken
-3. Commit describing the refinements
+Report every actionable finding with a precise file and line or hunk. Run the
+required tests and type checking, but do not modify the branch.
 
 # CONTAINER LIMITATIONS
 
