@@ -10,6 +10,18 @@ OTP verification proves ownership of a phone number (ADR-0009), but it cannot pr
 
 ## Decision
 
+### Relationship to earlier ADRs
+
+This ADR explicitly amends two earlier statements:
+
+- ADR-0009 says OTP verification issues the normal access token and per-Device
+  refresh token. OTP verification now issues only the restricted provisional
+  credential; the normal auth-session family begins atomically at activation.
+- ADR-0003 says the backend needs no cryptography beyond TLS. The backend still
+  performs no Signal session establishment or message encryption/decryption,
+  but activation must verify the signed-prekey signature using the submitted
+  public identity key as an admission check over public material.
+
 ### State machine
 
 | State | Meaning | Transitions |
@@ -26,7 +38,7 @@ OTP verification proves ownership of a phone number (ADR-0009), but it cannot pr
 
 - A successful OTP verification creates a `PROVISIONAL` Device for the Account.
 - The Device has a fixed, non-sliding expiry deadline of **24 hours** from OTP verification.
-- The client creates a random installation UUID in platform-secure storage. It is used **only for deduplication**, never for authentication. Reinstalling creates a new installation identity.
+- The client creates a random installation UUID in platform-secure storage. OTP verification records its hash and the Device platform on the provisional Device. The installation identity is used **only for deduplication**, never for authentication. Reinstalling creates a new installation identity.
 - Repeated OTP verification for the same Account/installation pair returns the existing unexpired provisional Device.
 
 ### Restricted provisional credential
@@ -52,7 +64,7 @@ OTP verification proves ownership of a phone number (ADR-0009), but it cannot pr
 Activation atomically validates and persists:
 
 1. the identity public key,
-2. the signed prekey,
+2. the signed-prekey public key,
 3. the signed-prekey signature, verified by that identity key,
 4. unique prekey IDs,
 5. a non-empty one-time-prekey batch,
@@ -87,19 +99,21 @@ Before activation, the client generates and securely stores a **256-bit bootstra
 ### Status endpoint
 
 - The activation-status endpoint reveals only: the caller's Device ID, state, fixed expiry timestamp, and safe retry instruction.
-- It never reveals installation UUID, platform, or label as authorization inputs.
+- It never reveals the installation UUID, platform, or Device label.
+- Installation identity, platform, and Device label are never authorization inputs on any route.
 
 ### Privacy-safe observability
 
 - Use aggregate counters for: creation, activation, expiry, abandonment, replay, conflict, and cleanup failure.
 - Logs contain only opaque Device IDs and transition/error codes.
-- No phone numbers, keys, or payloads are logged.
+- Logs never contain phone numbers, tokens, bootstrap secrets, installation
+  identities, identity/prekey material, or activation payloads.
 
 ### Failure responses
 
 | Status | Condition |
 |---|---|
-| `400` | Malformed activation material |
+| `400` | Malformed identity/signed-prekey material, signature, prekey IDs, installation identity, or bootstrap secret |
 | `401` | Invalid provisional credential |
 | `403` | Revoked or route-forbidden credential |
 | `409` | Device cap, payload, or state conflict |
@@ -112,7 +126,9 @@ Before activation, the client generates and securely stores a **256-bit bootstra
 ### Positive
 
 - Resolves the OTP-versus-Signal-identity deadlock with a single, complete contract.
-- Keeps the server simple: it validates public material and stores hashes, never plaintext messages or keys.
+- Keeps the server simple: it validates and stores only required public key
+  material plus one-way credential/deduplication hashes; it never stores
+  plaintext messages, private keys, bootstrap secrets, or refresh tokens.
 - Replay and idempotency give the mobile client a safe recovery path across network loss and app kills.
 - Bounded cleanup and tombstone retention keep the database bounded without losing audit metadata.
 

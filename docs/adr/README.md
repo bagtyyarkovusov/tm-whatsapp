@@ -17,3 +17,6 @@ Single-context repo: ADRs live here at `docs/adr/`; current implemented state li
 | [0011](0011-provisional-device-activation.md) | Provisional Device activation and expiry | Accepted | 2026-07-22 |
 
 ADRs 0001–0010 originate from the founding grilling session (2026-07-20). ADR-0011 was accepted during Phase 1 implementation (2026-07-22). The sister project's ADRs at `~/Projects/auto.tm-rewrite/docs/adr/` are cross-referenced throughout; auto.tm ADR-0005 (air-gapped TM hosting) is the end-state model for ADR-0001 here.
+
+ADR-0011 amends ADR-0009's auth-session issuance timing and ADR-0003's backend
+cryptography boundary for public signed-prekey verification during activation.
