@@ -10,7 +10,10 @@
 - `docs/prd/00-vision.md`, `docs/prd/01-roadmap.md` — product vision and five-phase roadmap
 - pnpm/Turbo strict-TypeScript monorepo with NestJS API, Expo mobile, and shared db/contracts/crypto package homes
 - health endpoint, initial device-aware Prisma models, shared health/phone contracts, and type-only crypto interfaces
-- CI for build, typecheck, lint, formatting, and unit tests
+- `GET /health/live` (process liveness) and `GET /health/ready` (Postgres/Redis/MinIO dependency readiness), their shared Zod contracts, and tests
+- local Docker image (`apps/api/Dockerfile`), root `.dockerignore`, and `compose.yaml` with Postgres 16, Redis 7, and MinIO on private networking with health checks and named volumes
+- `scripts/compose-smoke.sh` and CI `compose-smoke` job proving startup, failure/recovery, and named-volume persistence
+- CI for build, typecheck, lint, formatting, unit tests, and Compose smoke acceptance
 - Sandcastle orchestration for issue-driven agents; Phase 1 agent-readiness hardening is in progress
 - `docs/agents/` — issue tracker, readiness, triage-label, and domain-doc conventions
 - GitHub Phase 1 issue tree on `bagtyyarkovusov/tm-whatsapp`

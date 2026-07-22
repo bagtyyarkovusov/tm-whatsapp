@@ -1,4 +1,4 @@
-import { Injectable, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 import { PrismaClient } from "@tm/db";
 
 /**
@@ -8,9 +8,18 @@ import { PrismaClient } from "@tm/db";
  */
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(PrismaService.name);
+
   async onModuleInit(): Promise<void> {
     if (process.env.DATABASE_URL) {
-      await this.$connect();
+      try {
+        await this.$connect();
+      } catch (error) {
+        this.logger.warn(
+          { error: (error as Error).message },
+          "Initial database connection failed; API will start and /health/ready will report degraded",
+        );
+      }
     }
   }
 

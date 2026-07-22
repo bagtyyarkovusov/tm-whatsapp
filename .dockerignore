@@ -1,0 +1,23 @@
+# Build artifacts and caches
+node_modules
+.pnpm-store
+dist
+.turbo
+.expo
+coverage
+
+# VCS and local dev
+.git
+.github
+*.md
+.DS_Store
+.env*
+!.env.example
+
+# Agent/orchestration files not needed at runtime
+.sandcastle
+vendor
+docs
+
+# Mobile native tooling and logs
+*.log
