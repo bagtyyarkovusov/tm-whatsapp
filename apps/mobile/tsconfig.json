@@ -7,5 +7,5 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true
   },
-  "include": ["app", "src", "nativewind-env.d.ts", "*.ts", "*.tsx"]
+  "include": ["app", "src", "components", "nativewind-env.d.ts", "*.ts", "*.tsx"]
 }
