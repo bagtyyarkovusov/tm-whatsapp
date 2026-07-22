@@ -3,13 +3,13 @@
 //
 //   Phase 1 (Plan):    A planner reads the `ready-for-agent` issue queue,
 //                      builds a dependency graph, and emits a <plan> JSON of
-//                      unblocked issues + `sandcastle/issue-<N>-<slug>` branches.
+//                      unblocked issues + `agent/issue-<N>-<slug>` branches.
 //   Phase 2 (Execute): One sandbox per issue (own Docker container + git
 //                      worktree). The implementer runs first (≤100 iters); if it
-//                      commits, a reviewer runs in the same sandbox (1 iter).
-//                      All issue pipelines run concurrently (Promise.allSettled).
-//   Phase 3 (Merge):   One merger merges the completed branches into the current
-//                      branch and closes the issues.
+//                      reports COMPLETE, an issue-aware reviewer runs in the
+//                      same sandbox. At most two disjoint issues run together.
+//   Phase 3 (Publish): Approved branches are pushed as one PR per issue. GitHub
+//                      closes the issue only when that PR is later merged.
 //
 // Providers — pick one via SANDCASTLE_AGENT_PROVIDER in .sandcastle/.env:
 //   claude-code  Claude Code CLI on Kimi's Anthropic-compatible endpoint (default)
@@ -18,7 +18,6 @@
 // Both providers share the locked per-role matrix and the fallback ladder:
 //
 //   Role         Model            Effort   Context (default)   Override knob
-//   merger       k3               high     1M (1048576)        SANDCASTLE_KIMI_WINDOW_MERGER
 //   reviewer     k3               high     1M                  SANDCASTLE_KIMI_WINDOW_REVIEWER
 //   implementer  kimi-for-coding  —        256K                SANDCASTLE_KIMI_WINDOW_IMPLEMENTER
 //   planner      kimi-for-coding  —        256K                SANDCASTLE_KIMI_WINDOW_PLANNER
@@ -87,9 +86,26 @@ const HOST_ENV = { ...process.env, ...(await readSandcastleEnv()) };
 // Configuration
 // ---------------------------------------------------------------------------
 
-// plan→execute→merge cycles before stopping. Override for a quick smoke test:
+// plan→execute→publish cycles before stopping. Override for a quick smoke test:
 //   MAX_ITERATIONS=1 npm run sandcastle
 const MAX_ITERATIONS = Number(HOST_ENV.MAX_ITERATIONS ?? 10);
+const MAX_CONCURRENT_ISSUES = Math.max(
+  1,
+  Math.min(2, Number(HOST_ENV.SANDCASTLE_MAX_CONCURRENT_ISSUES ?? 2)),
+);
+
+const DISJOINT_ISSUE_PAIRS = new Set(
+  (HOST_ENV.SANDCASTLE_DISJOINT_ISSUE_PAIRS ?? "")
+    .split(",")
+    .map((pair) =>
+      pair
+        .split(":")
+        .map((id) => id.trim())
+        .sort((a, b) => Number(a) - Number(b))
+        .join(":"),
+    )
+    .filter(Boolean),
+);
 
 const KIMI_API_KEY = HOST_ENV.KIMI_API_KEY;
 if (!KIMI_API_KEY) {
@@ -113,9 +129,6 @@ const IMPLEMENTER_IDLE_TIMEOUT_SECONDS = Number(
 );
 const REVIEWER_IDLE_TIMEOUT_SECONDS = Number(
   HOST_ENV.SANDCASTLE_REVIEWER_IDLE_TIMEOUT_SECONDS ?? 180,
-);
-const MERGER_IDLE_TIMEOUT_SECONDS = Number(
-  HOST_ENV.SANDCASTLE_MERGER_IDLE_TIMEOUT_SECONDS ?? 180,
 );
 
 // ---------------------------------------------------------------------------
@@ -200,7 +213,7 @@ const agentAtRung = (
  * kimi-for-coding@262144; K2.7 roles fall back up to k3@262144.
  * Non-entitlement errors abort.
  */
-const withLadder = async <T>(
+const withLadder = async <T,>(
   role: AgentRole,
   fn: (agent: sandcastle.AgentProvider) => Promise<T>,
 ): Promise<T> => {
@@ -224,8 +237,11 @@ const withLadder = async <T>(
 // Git helpers (host-side)
 // ---------------------------------------------------------------------------
 
-const execGit = async (args: string[]) =>
-  execFileAsync("git", args, { maxBuffer: 10 * 1024 * 1024 });
+const execGit = async (args: string[], options?: { cwd?: string }) =>
+  execFileAsync("git", args, {
+    maxBuffer: 10 * 1024 * 1024,
+    ...options,
+  });
 
 const getCurrentHead = async () => {
   const { stdout } = await execGit(["rev-parse", "HEAD"]);
@@ -262,7 +278,169 @@ const slugIssueTitle = (title: string) =>
     .join("-");
 
 const canonicalIssueBranch = (issue: { id: string; title: string }) =>
-  `sandcastle/issue-${issue.id}-${slugIssueTitle(issue.title)}`;
+  `agent/issue-${issue.id}-${slugIssueTitle(issue.title)}`;
+
+const RAILWAY_ENV_KEYS = [
+  "RAILWAY_TOKEN",
+  "RAILWAY_API_TOKEN",
+  "RAILWAY_PROJECT_ID",
+  "RAILWAY_ENVIRONMENT_ID",
+  "RAILWAY_ENVIRONMENT",
+  "RAILWAY_SERVICE_ID",
+] as const;
+
+const WITHOUT_RAILWAY_ENV = Object.fromEntries(
+  RAILWAY_ENV_KEYS.map((key) => [key, ""]),
+);
+
+const RAILWAY_ISSUE_ENV = {
+  ...WITHOUT_RAILWAY_ENV,
+  RAILWAY_TOKEN: HOST_ENV.RAILWAY_TOKEN ?? "",
+  RAILWAY_PROJECT_ID: HOST_ENV.RAILWAY_PROJECT_ID ?? "",
+  RAILWAY_ENVIRONMENT_ID: HOST_ENV.RAILWAY_ENVIRONMENT_ID ?? "",
+};
+
+type IssueWorkItem = { id: string; title: string; branch: string };
+
+type IssueExecutionMetadata = {
+  body: string;
+  requiresRailway: boolean;
+};
+
+const REQUIRED_ISSUE_SECTIONS = [
+  "Outcome",
+  "In scope",
+  "Out of scope",
+  "Decisions already settled",
+  "Dependencies",
+  "Local context",
+  "Agent environment",
+  "Acceptance — agent-verifiable",
+  "Human validation",
+  "Rollback and observability",
+] as const;
+
+const parseIssueSections = (body: string) => {
+  const headings = [...body.matchAll(/^(#{2,3})\s+(.+?)\s*$/gm)];
+  const sections = new Map<string, string>();
+
+  for (const [index, heading] of headings.entries()) {
+    const level = heading[1]!.length;
+    const nextHeading = headings
+      .slice(index + 1)
+      .find((candidate) => candidate[1]!.length <= level);
+    const contentStart = heading.index! + heading[0].length;
+    sections.set(
+      heading[2]!,
+      body.slice(contentStart, nextHeading?.index ?? body.length).trim(),
+    );
+  }
+
+  return sections;
+};
+
+const parseMirroredBlockers = (body: string) => {
+  const line = body.match(/^Blocked by:\s*(.+)$/im)?.[1]?.trim();
+  if (!line) throw new Error("missing mirrored `Blocked by:` line");
+  if (/^None\.?$/i.test(line)) return [];
+  const issueNumbers = [...line.matchAll(/#(\d+)/g)].map((match) => match[1]!);
+  if (issueNumbers.length === 0) {
+    throw new Error("mirrored `Blocked by:` line contains no issue numbers");
+  }
+  return [...new Set(issueNumbers)].sort((a, b) => Number(a) - Number(b));
+};
+
+const validateIssueContract = (body: string) => {
+  const sections = parseIssueSections(body);
+  for (const section of REQUIRED_ISSUE_SECTIONS) {
+    const content = sections.get(section);
+    if (!content) {
+      throw new Error(`missing required issue section: ${section}`);
+    }
+    if (/^(?:tbd|todo|placeholder|-)\.?$/i.test(content)) {
+      throw new Error(`placeholder content in required issue section: ${section}`);
+    }
+  }
+
+  if (!/^None\.?$/i.test(sections.get("Human validation")!)) {
+    throw new Error("Human validation must be exactly `None`");
+  }
+  if (!/^Blocked by:\s*(?:None\.?|#\d+(?:\s*,\s*#\d+)*)$/im.test(sections.get("Dependencies")!)) {
+    throw new Error("Dependencies must contain only the canonical `Blocked by:` line");
+  }
+  if (!/scripts\/agent-preflight\.sh(?:\s+--railway)?/.test(sections.get("Agent environment")!)) {
+    throw new Error("Agent environment must declare the exact preflight command");
+  }
+  if (!/- \[ \]/.test(sections.get("Acceptance — agent-verifiable")!)) {
+    throw new Error("Acceptance must contain unchecked agent-verifiable checkboxes");
+  }
+  if (!/`[^`\n]+`/.test(sections.get("Acceptance — agent-verifiable")!)) {
+    throw new Error("Acceptance must contain at least one exact command");
+  }
+  if (
+    /^requires_railway:\s*true\s*$/im.test(body) &&
+    !/scripts\/agent-preflight\.sh\s+--railway/.test(sections.get("Agent environment")!)
+  ) {
+    throw new Error("Railway issues must declare the Railway preflight command");
+  }
+};
+
+const getIssueExecutionMetadata = async (
+  issue: IssueWorkItem,
+): Promise<IssueExecutionMetadata> => {
+  const { stdout: issueJson } = await execFileAsync("gh", [
+    "issue",
+    "view",
+    issue.id,
+    "--json",
+    "body,state,labels,assignees,title",
+  ]);
+  const metadata = JSON.parse(issueJson) as {
+    body: string;
+    state: string;
+    title: string;
+    labels: { name: string }[];
+    assignees: { login: string }[];
+  };
+
+  if (metadata.state !== "OPEN") throw new Error("issue is not open");
+  if (!metadata.labels.some((label) => label.name === "ready-for-agent")) {
+    throw new Error("issue is missing `ready-for-agent`");
+  }
+  if (metadata.assignees.length > 0) throw new Error("issue is already assigned");
+  if (metadata.title !== issue.title) throw new Error("planner returned a stale issue title");
+  validateIssueContract(metadata.body);
+
+  const { stdout: repository } = await execFileAsync("gh", [
+    "repo",
+    "view",
+    "--json",
+    "nameWithOwner",
+    "--jq",
+    ".nameWithOwner",
+  ]);
+  const { stdout: blockersJson } = await execFileAsync("gh", [
+    "api",
+    `repos/${repository.trim()}/issues/${issue.id}/dependencies/blocked_by`,
+    "--paginate",
+  ]);
+  const nativeBlockers = (JSON.parse(blockersJson) as { number: number; state: string }[])
+    .map((blocker) => ({ number: String(blocker.number), state: blocker.state }))
+    .sort((a, b) => Number(a.number) - Number(b.number));
+  const mirroredBlockers = parseMirroredBlockers(metadata.body);
+
+  if (nativeBlockers.map((blocker) => blocker.number).join(",") !== mirroredBlockers.join(",")) {
+    throw new Error("native blockers and mirrored `Blocked by:` line disagree");
+  }
+  if (nativeBlockers.some((blocker) => blocker.state !== "closed")) {
+    throw new Error("issue has an open native blocker");
+  }
+
+  return {
+    body: metadata.body,
+    requiresRailway: /^requires_railway:\s*true\s*$/im.test(metadata.body),
+  };
+};
 
 const getWorktreeForBranch = async (branch: string) => {
   const { stdout } = await execGit(["worktree", "list", "--porcelain"]);
@@ -319,15 +497,48 @@ const prepareIssueBranch = async (issue: { id: string; branch: string }) => {
   await execGit(["branch", "-f", issue.branch, baseHead]);
 };
 
-const pushCurrentBranch = async () => {
-  const { stdout } = await execFileAsync("git", ["branch", "--show-current"]);
-  const branch = stdout.trim();
-  if (!branch) {
-    throw new Error("Cannot push: current git branch is empty/detached.");
-  }
+const publishIssuePullRequest = async (issue: IssueWorkItem) => {
   await execFileAsync("gh", ["auth", "setup-git"]);
-  await execFileAsync("git", ["push", "origin", branch]);
-  console.log(`Pushed ${branch} to origin.`);
+  await execFileAsync("git", ["push", "--set-upstream", "origin", issue.branch]);
+
+  const { stdout: existing } = await execFileAsync("gh", [
+    "pr",
+    "list",
+    "--state",
+    "open",
+    "--head",
+    issue.branch,
+    "--json",
+    "url",
+    "--jq",
+    ".[0].url // empty",
+  ]);
+  if (existing.trim()) {
+    console.log(`PR already open for #${issue.id}: ${existing.trim()}`);
+    return;
+  }
+
+  const { stdout: defaultBranch } = await execFileAsync("gh", [
+    "repo",
+    "view",
+    "--json",
+    "defaultBranchRef",
+    "--jq",
+    ".defaultBranchRef.name",
+  ]);
+  const { stdout: url } = await execFileAsync("gh", [
+    "pr",
+    "create",
+    "--base",
+    defaultBranch.trim(),
+    "--head",
+    issue.branch,
+    "--title",
+    `#${issue.id}: ${issue.title}`,
+    "--body",
+    `Closes #${issue.id}\n\nImplemented and independently reviewed by Sandcastle. The issue closes only when this PR merges.`,
+  ]);
+  console.log(`Published #${issue.id} for CI and merge review: ${url.trim()}`);
 };
 
 const checkGitHubBudget = async () => {
@@ -374,22 +585,12 @@ const copyToWorktree = existsSync("node_modules") ? ["node_modules"] : [];
 
 const implementerHooks = { sandbox: { onSandboxReady: [INSTALL_HOOK] } };
 
-// The merger also needs `gh auth setup-git` to push over HTTPS.
-const mergerHooks = {
-  sandbox: {
-    onSandboxReady: [
-      { command: "gh auth setup-git", timeoutMs: 30_000 },
-      INSTALL_HOOK,
-    ],
-  },
-};
-
 // ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
 
 console.log(
-  `Provider: ${PROVIDER} | matrix: planner/implementer=kimi-for-coding@256K (no effort), reviewer/merger=k3 high@1M | ladder: k3@1M → k3@256K → kimi-for-coding@256K (K2.7 roles: → k3@256K)`,
+  `Provider: ${PROVIDER} | matrix: planner/implementer=kimi-for-coding@256K (no effort), reviewer=k3 high@1M | ladder: k3@1M → k3@256K → kimi-for-coding@256K (K2.7 roles: → k3@256K)`,
 );
 
 for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
@@ -402,7 +603,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // -------------------------------------------------------------------------
   const plan = await withLadder("planner", (agent) =>
     sandcastle.run({
-      sandbox: docker(),
+      sandbox: docker({ env: WITHOUT_RAILWAY_ENV }),
       name: "planner",
       maxIterations: 1,
       agent,
@@ -426,11 +627,17 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     .replace(/\\"/g, '"')
     .replace(/\\t/g, "\t")
     .trim();
-  const parsedPlan = JSON.parse(planJson) as {
-    issues: { id: string; title: string; branch: string }[];
-  };
+  const parsedPlan = JSON.parse(planJson) as { issues: IssueWorkItem[] };
+  if (!Array.isArray(parsedPlan.issues)) {
+    throw new Error("Planner returned an invalid issues list.");
+  }
+  for (const issue of parsedPlan.issues) {
+    if (!/^\d+$/.test(issue.id) || !issue.title?.trim()) {
+      throw new Error("Planner returned an invalid issue id or title.");
+    }
+  }
   // Canonicalize branch names so planner slug drift cannot create duplicates.
-  const issues = parsedPlan.issues.map((issue) => {
+  const issues = parsedPlan.issues.slice(0, MAX_CONCURRENT_ISSUES).map((issue) => {
     const branch = canonicalIssueBranch(issue);
     if (issue.branch !== branch) {
       console.log(
@@ -440,15 +647,49 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     return { ...issue, branch };
   });
 
-  if (issues.length === 0) {
+  if (new Set(issues.map((issue) => issue.id)).size !== issues.length) {
+    throw new Error("Planner returned the same issue more than once.");
+  }
+
+  if (issues.length === 2) {
+    const pair = issues
+      .map((issue) => issue.id)
+      .sort((a, b) => Number(a) - Number(b))
+      .join(":");
+    if (!DISJOINT_ISSUE_PAIRS.has(pair)) {
+      console.warn(
+        `Planner selected unapproved concurrent pair ${pair}; executing only #${issues[0]!.id}.`,
+      );
+      issues.splice(1);
+    }
+  }
+
+  const eligibleIssues: Array<{
+    issue: IssueWorkItem;
+    metadata: IssueExecutionMetadata;
+  }> = [];
+  for (const issue of issues) {
+    try {
+      eligibleIssues.push({
+        issue,
+        metadata: await getIssueExecutionMetadata(issue),
+      });
+    } catch (error) {
+      console.warn(
+        `[${issue.id}] rejected by deterministic readiness gate: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (eligibleIssues.length === 0) {
     console.log("No unblocked issues to work on. Exiting.");
     break;
   }
 
   console.log(
-    `Planning complete. ${issues.length} issue(s) to work in parallel:`,
+    `Planning complete. ${eligibleIssues.length} issue(s) to work in parallel:`,
   );
-  for (const issue of issues) {
+  for (const { issue } of eligibleIssues) {
     console.log(`  ${issue.id}: ${issue.title} → ${issue.branch}`);
   }
 
@@ -456,12 +697,14 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // Phase 2: Execute + Review (one sandbox per issue, shared by both roles)
   // -------------------------------------------------------------------------
   const settled = await Promise.allSettled(
-    issues.map(async (issue) => {
+    eligibleIssues.map(async ({ issue, metadata }) => {
       await prepareIssueBranch(issue);
       console.log(`[${issue.id}] creating sandbox for ${issue.branch}...`);
       const sandbox = await sandcastle.createSandbox({
         branch: issue.branch,
-        sandbox: docker(),
+        sandbox: docker({
+          env: metadata.requiresRailway ? RAILWAY_ISSUE_ENV : WITHOUT_RAILWAY_ENV,
+        }),
         copyToWorktree,
         hooks: implementerHooks,
       });
@@ -474,6 +717,10 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
           sandbox.run({
             name: "implementer",
             maxIterations: 100,
+            completionSignal: [
+              "<agent-result>COMPLETE</agent-result>",
+              "<agent-result>INCOMPLETE</agent-result>",
+            ],
             idleTimeoutSeconds: IMPLEMENTER_IDLE_TIMEOUT_SECONDS,
             agent,
             promptFile: "./.sandcastle/implement-prompt.md",
@@ -485,8 +732,12 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
           }),
         );
 
-        // Only review if the implementer produced commits.
-        if (implement.commits.length > 0) {
+        const implementationComplete =
+          implement.completionSignal ===
+          "<agent-result>COMPLETE</agent-result>";
+
+        // Only review a committed result that explicitly claims completion.
+        if (implementationComplete && implement.commits.length > 0) {
           console.log(
             `[${issue.id}] reviewer starting (idle timeout ${REVIEWER_IDLE_TIMEOUT_SECONDS}s).`,
           );
@@ -494,20 +745,39 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
             sandbox.run({
               name: "reviewer",
               maxIterations: 1,
+              completionSignal: [
+                "<review-result>APPROVED</review-result>",
+                "<review-result>REJECTED</review-result>",
+              ],
               idleTimeoutSeconds: REVIEWER_IDLE_TIMEOUT_SECONDS,
               agent,
               promptFile: "./.sandcastle/review-prompt.md",
               promptArgs: {
+                TASK_ID: issue.id,
+                ISSUE_TITLE: issue.title,
                 BRANCH: issue.branch,
               },
             }),
           );
 
-          // Merge both runs' commits so the merge phase sees all of them.
-          return { ...review, commits: [...implement.commits, ...review.commits] };
+          const reviewerChangedCode = review.commits.length > 0;
+          if (reviewerChangedCode) {
+            console.warn(
+              `[${issue.id}] rejected: reviewer authored commits that were not independently reviewed.`,
+            );
+          }
+          return {
+            approved:
+              !reviewerChangedCode &&
+              review.completionSignal === "<review-result>APPROVED</review-result>",
+            commits: [...implement.commits, ...review.commits],
+          };
         }
 
-        return implement;
+        console.warn(
+          `[${issue.id}] not publishable: implementation did not explicitly complete with commits.`,
+        );
+        return { approved: false, commits: implement.commits };
       } finally {
         await sandbox.close();
       }
@@ -517,59 +787,42 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   for (const [i, outcome] of settled.entries()) {
     if (outcome.status === "rejected") {
       console.error(
-        `  ✗ ${issues[i]!.id} (${issues[i]!.branch}) failed: ${outcome.reason}`,
+        `  ✗ ${eligibleIssues[i]!.issue.id} (${eligibleIssues[i]!.issue.branch}) failed: ${outcome.reason}`,
       );
     }
   }
 
-  // Only branches that actually produced commits go to the merge phase.
-  const completedIssues = settled
-    .map((outcome, i) => ({ outcome, issue: issues[i]! }))
+  // Only explicitly completed and independently approved branches are published.
+  const approvedIssues = settled
+    .map((outcome, i) => ({ outcome, issue: eligibleIssues[i]!.issue }))
     .filter(
       (entry) =>
         entry.outcome.status === "fulfilled" &&
+        entry.outcome.value.approved &&
         entry.outcome.value.commits.length > 0,
     )
     .map((entry) => entry.issue);
 
-  const completedBranches = completedIssues.map((i) => i.branch);
-
   console.log(
-    `\nExecution complete. ${completedBranches.length} branch(es) with commits:`,
+    `\nExecution complete. ${approvedIssues.length} approved branch(es):`,
   );
-  for (const branch of completedBranches) {
-    console.log(`  ${branch}`);
+  for (const issue of approvedIssues) {
+    console.log(`  #${issue.id}: ${issue.branch}`);
   }
 
-  if (completedBranches.length === 0) {
-    console.log("No commits produced. Nothing to merge.");
+  if (approvedIssues.length === 0) {
+    console.log("No approved branches. Nothing to publish.");
     continue;
   }
 
   // -------------------------------------------------------------------------
-  // Phase 3: Merge
+  // Phase 3: Publish one pull request per issue
   // -------------------------------------------------------------------------
-  await withLadder("merger", (agent) =>
-    sandcastle.run({
-      hooks: mergerHooks,
-      sandbox: docker(),
-      branchStrategy: { type: "merge-to-head" },
-      copyToWorktree,
-      name: "merger",
-      maxIterations: 1,
-      idleTimeoutSeconds: MERGER_IDLE_TIMEOUT_SECONDS,
-      agent,
-      promptFile: "./.sandcastle/merge-prompt.md",
-      promptArgs: {
-        BRANCHES: completedBranches.map((b) => `- ${b}`).join("\n"),
-        ISSUES: completedIssues.map((i) => `- ${i.id}: ${i.title}`).join("\n"),
-      },
-    }),
-  );
+  for (const issue of approvedIssues) {
+    await publishIssuePullRequest(issue);
+  }
 
-  await pushCurrentBranch();
-
-  console.log("\nBranches merged.");
+  console.log("\nApproved issue PRs published. Issues remain open until merge.");
 }
 
 console.log("\nAll done.");

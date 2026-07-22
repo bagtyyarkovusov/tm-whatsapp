@@ -4,7 +4,7 @@
 #     Anthropic-compatible endpoint at runtime via ANTHROPIC_* env (main.mts)
 #   - Kimi Code CLI (`kimi`) — native fallback provider, configured at runtime
 #     via the KIMI_MODEL_* env channel (main.mts)
-#   - GitHub CLI (`gh`), pnpm, Context7 MCP, Railway CLI (`railway`)
+#   - GitHub CLI (`gh`), pnpm, Context7 MCP, Railway CLI + Claude Code skill
 #
 # Build with:
 #   npx sandcastle docker build-image --dockerfile .sandcastle/Dockerfile
@@ -84,12 +84,19 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN printf '{"penguinModeOrgEnabled":true,"hasCompletedOnboarding":true}\n' \
       > /home/agent/.claude.json
 
+# Trust only the repository's named Context7 project server in headless runs.
+# The same setting is committed at .claude/settings.json for non-container use;
+# user scope here avoids a first-run project-MCP approval prompt in sandboxes.
+RUN mkdir -p /home/agent/.claude && \
+    printf '{"enableAllProjectMcpServers":false,"enabledMcpjsonServers":["context7"]}\n' \
+      > /home/agent/.claude/settings.json
+
 # 7. Railway CLI. Direct binary download: the npm package's postinstall 404s
 #    on linux/arm64 (no aarch64-unknown-linux-gnu release asset); the musl
 #    build is statically linked and runs fine on bookworm. Bump the pinned
 #    version deliberately.
 #    Auth via RAILWAY_TOKEN injected at runtime. The orchestrator also pins
-#    RAILWAY_PROJECT_ID and RAILWAY_ENVIRONMENT so CLI commands
+#    RAILWAY_PROJECT_ID and RAILWAY_ENVIRONMENT_ID so CLI commands
 #    deterministically target the right project — `railway list` does NOT work
 #    with token auth (account-level listing needs OAuth), so always operate
 #    against the pinned project/environment.
@@ -101,7 +108,9 @@ RUN set -e; \
       *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;; \
     esac; \
     curl -fsSL "https://github.com/railwayapp/cli/releases/download/v${RAILWAY_CLI_VERSION}/railway-v${RAILWAY_CLI_VERSION}-${TRIPLE}.tar.gz" \
-      | tar -xz -C /home/agent/.local/bin railway
+      | tar -xz -C /home/agent/.local/bin railway && \
+    /home/agent/.local/bin/railway skills install --agent claude-code && \
+    test -f /home/agent/.claude/skills/use-railway/SKILL.md
 
 ENV PATH="/home/agent/.local/bin:${PATH}"
 

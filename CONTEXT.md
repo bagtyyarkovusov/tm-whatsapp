@@ -2,16 +2,22 @@
 
 **Current implemented state of this repo.** Describes what exists today — not ambition (that's `docs/prd/`), not decisions (that's `docs/adr/`). Updated as part of any PR that changes domain invariants. See `docs/agents/domain.md`.
 
-## State as of 2026-07-20
+## State as of 2026-07-22
 
-**Greenfield.** No application code exists. What exists:
+**Scaffolded; no end-user feature is complete.** What exists:
 
 - `docs/adr/0001–0010` — all foundational architecture decisions, accepted 2026-07-20 (founding grilling session)
 - `docs/prd/00-vision.md`, `docs/prd/01-roadmap.md` — product vision and five-phase roadmap
-- `docs/agents/` — issue-tracker, triage-label, and domain-doc conventions (this file's format)
-- GitHub Issues on `bagtyyarkovusov/tm-whatsapp` — sprint planning surface
+- pnpm/Turbo strict-TypeScript monorepo with NestJS API, Expo mobile, and shared db/contracts/crypto package homes
+- health endpoint, initial device-aware Prisma models, shared health/phone contracts, and type-only crypto interfaces
+- CI for build, typecheck, lint, formatting, and unit tests
+- Sandcastle orchestration for issue-driven agents; Phase 1 agent-readiness hardening is in progress
+- `docs/agents/` — issue tracker, readiness, triage-label, and domain-doc conventions
+- GitHub Phase 1 issue tree on `bagtyyarkovusov/tm-whatsapp`
 
-Nothing below is implemented yet. The glossary defines vocabulary that code, issues, and tests must use consistently once they exist.
+OTP, real Signal Protocol cryptography, messaging, contact discovery, push,
+Railway services, abuse controls, and release builds are not implemented. The
+glossary defines vocabulary that code, issues, and tests must use consistently.
 
 ## Glossary
 

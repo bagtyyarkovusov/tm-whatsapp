@@ -11,6 +11,37 @@ Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all op
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
+Before applying `ready-for-agent`, follow
+[`docs/agents/agent-ready.md`](agent-ready.md). Parent/tracking issues and issues
+with open blockers do not receive the label.
+
+Phase 1 issues use both the `Phase 1 — Core` milestone and `phase-1` label.
+Area and priority labels are routing metadata, not readiness signals.
+
+### Dependencies
+
+GitHub native issue dependencies are the source of truth. Mirror them near the
+top of every issue body as:
+
+```text
+Blocked by: #12, #18
+```
+
+Use `Blocked by: None` for a root issue. Never start a blocked ticket merely
+because it has fewer dependencies than another ticket.
+
+### Agent environment metadata
+
+Railway-mutating tickets include this literal marker in their body:
+
+```text
+requires_railway: true
+```
+
+Sandcastle uses the marker to inject the development-scoped Railway token only
+into that issue's implementer/reviewer container. Planner, publisher, and
+unrelated issue containers receive no Railway credentials.
+
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
 ## Pull requests as a triage surface
