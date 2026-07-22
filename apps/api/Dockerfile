@@ -6,7 +6,7 @@ FROM node:20-slim
 
 # Prisma's engine detection needs the openssl CLI; curl is used by health checks.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates curl \
+  && apt-get install -y --no-install-recommends openssl ca-certificates curl wget \
   && rm -rf /var/lib/apt/lists/*
 
 ENV PNPM_HOME="/pnpm"
