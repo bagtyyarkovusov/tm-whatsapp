@@ -14,7 +14,25 @@
     "android": {
       "package": "tm.whatsapp.app"
     },
-    "plugins": ["expo-router", "expo-dev-client", "expo-localization"],
+    "plugins": [
+      "expo-router",
+      "expo-dev-client",
+      "expo-localization",
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "allowBackup": false
+          }
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": false
     }
