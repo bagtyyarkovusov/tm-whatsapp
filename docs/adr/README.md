@@ -16,6 +16,7 @@ Single-context repo: ADRs live here at `docs/adr/`; current implemented state li
 | [0010](0010-contact-discovery-and-abuse.md) | Contact discovery (hashed + QR) and reporter-side abuse reports | Accepted | 2026-07-20 |
 | [0011](0011-provisional-device-activation.md) | Provisional Device activation and expiry | Accepted | 2026-07-22 |
 | [0012](0012-mobile-data-state-architecture.md) | Mobile data and state architecture | Accepted | 2026-07-22 |
+| [0013](0013-encrypted-local-database.md) | Encrypted local database: expo-sqlite + SQLCipher, SecureStore key custody | Accepted | 2026-07-23 |
 
 ADRs 0001–0010 originate from the founding grilling session (2026-07-20). ADR-0011 was accepted during Phase 1 implementation (2026-07-22). The sister project's ADRs at `~/Projects/auto.tm-rewrite/docs/adr/` are cross-referenced throughout; auto.tm ADR-0005 (air-gapped TM hosting) is the end-state model for ADR-0001 here.
 
@@ -25,3 +26,7 @@ cryptography boundary for public signed-prekey verification during activation.
 ADR-0012 builds on ADR-0004's mobile stack decision and records the Phase 1
 server-state, socket-cache, client-state, and encrypted local-store boundaries
 for #39, #47, and #48–#53.
+
+ADR-0013 resolves the engine question ADR-0012 left open (#47): expo-sqlite +
+SQLCipher behind a `LocalDb` interface, `user_version` migrations, and
+SecureStore key custody, per `docs/research/0047-encrypted-local-database.md`.
