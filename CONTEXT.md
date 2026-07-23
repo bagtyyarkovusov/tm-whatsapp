@@ -8,6 +8,7 @@
 
 - `docs/adr/0001–0011` — all foundational architecture decisions, accepted 2026-07-20 (founding grilling session)
 - `docs/adr/0012-mobile-data-state-architecture.md` — accepted 2026-07-22; records mobile server-state, socket cache mutator, client-state, and encrypted local-store boundaries
+- `docs/adr/0013-encrypted-local-database.md` — accepted 2026-07-23; selects expo-sqlite + SQLCipher behind a `LocalDb` interface with SecureStore key custody and `user_version` migrations (research: `docs/research/0047-encrypted-local-database.md`, prototypes: `apps/mobile/src/db/`)
 - `docs/prd/00-vision.md`, `docs/prd/01-roadmap.md` — product vision and five-phase roadmap
 - pnpm/Turbo strict-TypeScript monorepo with NestJS API, Expo mobile, and shared db/contracts/crypto package homes
 - health endpoint, initial device-aware Prisma models, shared health/phone contracts, and type-only crypto interfaces

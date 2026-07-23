@@ -1,7 +1,9 @@
 // Prisma schema — home of all persistence for tm-whatsapp.
 // Device-aware from day one (CONTEXT.md invariant #2, ADR-0006):
 // Account → N Device → N PrekeyBundle. Never collapse to single-device shape.
-// The server never stores plaintext or private key material (invariant #1).
+// The server never stores plaintext or private key material (invariant #1):
+// no plaintext message bodies, no Signal private keys, no OTP codes in clear,
+// no refresh tokens or bootstrap secrets in clear — hashes only.
 
 generator client {
   provider = "prisma-client-js"
@@ -12,48 +14,202 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Device lifecycle states (ADR-0011). No backward transitions;
+/// PROVISIONAL → REVOKED is forbidden by the application layer.
+enum DeviceState {
+  PROVISIONAL
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+/// Auth session kinds (ADR-0011): the restricted provisional credential and
+/// the normal per-device refresh-token family (auto.tm ADR-0012 pattern).
+enum AuthSessionKind {
+  PROVISIONAL
+  NORMAL
+}
+
+/// Ciphertext message types relayed by the server (opaque to the server).
+enum CiphertextMessageType {
+  PREKEY_SIGNAL
+  SIGNAL
+  SENDER_KEY
+}
+
 /// A user's identity, keyed by phone number (+993XXXXXXXX).
 model Account {
-  id           String   @id @default(uuid())
+  id            String         @id @default(uuid())
   /// E.164 phone number, e.g. +9936XXXXXXX
-  phoneNumber  String   @unique @map("phone_number")
-  createdAt    DateTime @default(now()) @map("created_at")
-  devices      Device[]
+  phoneNumber   String         @unique @map("phone_number")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  devices       Device[]
+  otpChallenges OtpChallenge[]
 
   @@map("accounts")
 }
 
 /// One installation linked to an account, with its own Signal identity keypair
-/// and auth session. Cap ~5 per account (ADR-0006).
+/// and auth session. Cap ~5 per account shared by PROVISIONAL and ACTIVE
+/// devices (ADR-0006, ADR-0011). EXPIRED tombstones do not count.
 model Device {
-  id                 String         @id @default(uuid())
-  accountId          String         @map("account_id")
-  account            Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  /// Signal identity PUBLIC key for this device. Private keys never leave the device.
-  identityKeyPublic  Bytes          @map("identity_key_public")
-  /// Human-facing label, e.g. "iPhone 15".
-  label              String?
-  createdAt          DateTime       @default(now()) @map("created_at")
-  lastSeenAt         DateTime?      @map("last_seen_at")
-  prekeyBundles      PrekeyBundle[]
+  id                  String          @id @default(uuid())
+  accountId           String          @map("account_id")
+  account             Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// Lifecycle state (ADR-0011).
+  state               DeviceState     @default(PROVISIONAL)
+  /// Client platform, recorded at provisional creation. Never an
+  /// authorization input (ADR-0011).
+  platform            String
+  /// Hash of the client-generated installation UUID. Used ONLY for
+  /// provisional deduplication, never for authentication (ADR-0011).
+  installationIdHash  String          @map("installation_id_hash")
+  /// Signal identity PUBLIC key for this device. Private keys never leave the
+  /// device. Null until activation (ADR-0011).
+  identityKeyPublic   Bytes?          @map("identity_key_public")
+  /// Human-facing label, e.g. "iPhone 15". Set at activation; never an
+  /// authorization input.
+  label               String?
+  /// Fixed, non-sliding provisional deadline: 24h from OTP verification.
+  /// Null once the device leaves PROVISIONAL.
+  provisionalExpiresAt DateTime?      @map("provisional_expires_at")
+  /// Hash of the activation payload, for identical-replay convergence
+  /// (ADR-0011 activation replay). Null until activation.
+  activationPayloadHash String?       @map("activation_payload_hash")
+  activatedAt         DateTime?       @map("activated_at")
+  revokedAt           DateTime?       @map("revoked_at")
+  /// Terminal reason for EXPIRED/REVOKED tombstones (e.g. "deadline",
+  /// "abandoned", "user_revoked"). Aggregate-safe metadata only.
+  terminalReason      String?         @map("terminal_reason")
+  lastSeenAt          DateTime?       @map("last_seen_at")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  prekeyBundles       PrekeyBundle[]
+  oneTimePrekeys      OneTimePrekey[]
+  authSessions        AuthSession[]
+  sentCiphertexts     CiphertextMessage[] @relation("SenderDevice")
+  receivedCiphertexts CiphertextMessage[] @relation("RecipientDevice")
 
+  /// One unexpired provisional Device per (account, installation) pair is a
+  /// partial-unique concern enforced atomically by the application layer
+  /// (ADR-0011); this index keeps the dedup lookup fast.
+  @@index([accountId, installationIdHash], map: "devices_account_installation_idx")
+  /// Device-cap counting and per-account device listing.
+  @@index([accountId, state], map: "devices_account_state_idx")
   @@map("devices")
 }
 
-/// Per-device set of public prekeys enabling X3DH session establishment (ADR-0003).
-/// Stored server-side; these are public keys and not secret.
-model PrekeyBundle {
-  id                String   @id @default(uuid())
-  deviceId          String   @map("device_id")
-  device            Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  /// Signed prekey (public part).
-  signedPrekey      Bytes    @map("signed_prekey")
-  signedPrekeyId    Int      @map("signed_prekey_id")
-  signedPrekeySig   Bytes    @map("signed_prekey_sig")
-  /// One-time prekey (public part); null once consumed.
-  oneTimePrekey     Bytes?   @map("one_time_prekey")
-  oneTimePrekeyId   Int?     @map("one_time_prekey_id")
-  uploadedAt        DateTime @default(now()) @map("uploaded_at")
+/// One SMS OTP challenge (ADR-0009). The 6-digit code is stored HASHED ONLY,
+/// with a 5-minute TTL.
+model OtpChallenge {
+  id          String    @id @default(uuid())
+  accountId   String?   @map("account_id")
+  account     Account?  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// E.164 phone number the challenge was issued to. Kept denormalized so a
+  /// challenge can precede Account creation.
+  phoneNumber String    @map("phone_number")
+  /// Hash of the 6-digit OTP. The plaintext code is never stored.
+  codeHash    String    @map("code_hash")
+  /// Fixed 5-minute TTL (ADR-0009).
+  expiresAt   DateTime  @map("expires_at")
+  /// Verification attempt counter for abuse limits.
+  attempts    Int       @default(0)
+  /// Set once the challenge has been successfully verified.
+  consumedAt  DateTime? @map("consumed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
+  @@index([phoneNumber, createdAt], map: "otp_challenges_phone_created_idx")
+  @@map("otp_challenges")
+}
+
+/// Per-device auth session: either the restricted provisional credential or a
+/// NORMAL refresh-token family member with rotation and sliding expiry
+/// (auto.tm ADR-0012 pattern, ADR-0006/0009/0011). Only token HASHES are
+/// stored — never the token or bootstrap secret itself.
+model AuthSession {
+  id               String          @id @default(uuid())
+  deviceId         String          @map("device_id")
+  device           Device          @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  kind             AuthSessionKind
+  /// Token family identifier; all rotations of one family share it. Family
+  /// revocation invalidates every member at once.
+  familyId         String          @map("family_id")
+  /// Hash of the current refresh token (or provisional credential).
+  tokenHash        String          @map("token_hash")
+  /// Sliding expiry for NORMAL sessions; fixed 24h deadline for PROVISIONAL.
+  expiresAt        DateTime        @map("expires_at")
+  /// When this member was superseded by a rotation; null while current.
+  rotatedAt        DateTime?       @map("rotated_at")
+  /// Reuse of a rotated token marks the whole family compromised.
+  reuseDetectedAt  DateTime?       @map("reuse_detected_at")
+  revokedAt        DateTime?       @map("revoked_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  @@index([familyId], map: "auth_sessions_family_idx")
+  @@index([deviceId, kind], map: "auth_sessions_device_kind_idx")
+  @@map("auth_sessions")
+}
+
+/// Per-device set of public prekeys enabling X3DH session establishment
+/// (ADR-0003). Stored server-side; these are public keys and not secret.
+model PrekeyBundle {
+  id              String   @id @default(uuid())
+  deviceId        String   @map("device_id")
+  device          Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  /// Signed prekey (public part).
+  signedPrekey    Bytes    @map("signed_prekey")
+  signedPrekeyId  Int      @map("signed_prekey_id")
+  signedPrekeySig Bytes    @map("signed_prekey_sig")
+  uploadedAt      DateTime @default(now()) @map("uploaded_at")
+
+  /// Prekey IDs must be unique per device (ADR-0011 activation check 4).
+  @@unique([deviceId, signedPrekeyId], map: "prekey_bundles_device_signed_prekey_key")
   @@map("prekey_bundles")
+}
+
+/// One-time prekey (public part). Plural per device; consumed atomically on
+/// first bundle fetch (ADR-0003). Never secret.
+model OneTimePrekey {
+  id         String    @id @default(uuid())
+  deviceId   String    @map("device_id")
+  device     Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  keyId      Int       @map("key_id")
+  publicKey  Bytes     @map("public_key")
+  /// Set when handed out; consumed keys are never reused.
+  consumedAt DateTime? @map("consumed_at")
+  uploadedAt DateTime  @default(now()) @map("uploaded_at")
+
+  /// Prekey IDs must be unique per device (ADR-0011 activation check 4).
+  @@unique([deviceId, keyId], map: "one_time_prekeys_device_key_key")
+  /// Fetch-unconsumed queue per device.
+  @@index([deviceId, consumedAt], map: "one_time_prekeys_device_consumed_idx")
+  @@map("one_time_prekeys")
+}
+
+/// A ciphertext message queued for one recipient device (per-device fanout,
+/// ADR-0006). Opaque to the server by construction: the ciphertext column is
+/// the only payload and there is deliberately no plaintext column.
+model CiphertextMessage {
+  id                String                @id @default(uuid())
+  /// Client-generated idempotency key; identical retries converge on one row.
+  clientMessageId   String                @map("client_message_id")
+  senderDeviceId    String                @map("sender_device_id")
+  senderDevice      Device                @relation("SenderDevice", fields: [senderDeviceId], references: [id], onDelete: Cascade)
+  recipientDeviceId String                @map("recipient_device_id")
+  recipientDevice   Device                @relation("RecipientDevice", fields: [recipientDeviceId], references: [id], onDelete: Cascade)
+  type              CiphertextMessageType
+  /// Signal ciphertext bytes. Never plaintext.
+  ciphertext        Bytes
+  /// Server-side retention deadline; queued rows past expiry are deleted.
+  expiresAt         DateTime              @map("expires_at")
+  /// Set when the recipient device acknowledges delivery.
+  deliveredAt       DateTime?             @map("delivered_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+
+  /// Idempotent resend: one row per (sender device, client message id).
+  @@unique([senderDeviceId, clientMessageId], map: "ciphertext_messages_sender_client_msg_key")
+  /// Offline-queue drain: undelivered rows for a recipient device in order.
+  @@index([recipientDeviceId, deliveredAt, createdAt], map: "ciphertext_messages_recipient_queue_idx")
+  /// Retention sweeper.
+  @@index([expiresAt], map: "ciphertext_messages_expiry_idx")
+  @@map("ciphertext_messages")
 }
