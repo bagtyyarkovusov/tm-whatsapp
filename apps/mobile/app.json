@@ -24,14 +24,7 @@
           "useSQLCipher": true
         }
       ],
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "allowBackup": false
-          }
-        }
-      ]
+      "./plugins/with-android-backup-disabled.js"
     ],
     "experiments": {
       "typedRoutes": false

@@ -87,7 +87,7 @@ Backup exclusion:
 
 | Platform | Mechanism | Status in this branch |
 |---|---|---|
-| Android | `android:allowBackup="false"` in the manifest via `expo-build-properties` config plugin (`app.json`) | Configured |
+| Android | `android:allowBackup="false"` in the manifest via local Expo config plugin (`app.json`) | Configured |
 | Android SecureStore | expo-secure-store excludes its own SharedPreferences domain from Auto Backup automatically | Built into dependency |
 | iOS database file | The DB must be excluded from iCloud device backups. expo-sqlite stores files under `Documents/SQLite/` by default, which iCloud backs up; exclusion requires setting `NSURLIsExcludedFromBackupKey` on the file after creation | Documented; a ~15-line config plugin / native call is a listed follow-up for the storage-adapter implementation issue (#39/#48 family) |
 | iOS key | `SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY` keeps the key out of iCloud Keychain | In prototype |
@@ -117,7 +117,7 @@ shows chat-list queries missing frame budgets, the `LocalDb` interface plus
 |---|---|---|
 | expo-sqlite | MIT | Free |
 | op-sqlite | MIT | Free |
-| SQLCipher | BSD-style (Zetetic) | Free for open-source and commercial use |
+| SQLCipher | BSD-style (Zetetic) | Free for open-source and commercial use; requires user-accessible license attribution |
 | expo-secure-store / expo-crypto | MIT | Free |
 
 No licensing blockers for any candidate.
@@ -127,12 +127,14 @@ No licensing blockers for any candidate.
 | | expo-sqlite | op-sqlite |
 |---|---|---|
 | Engine-level tests in Node | No (native module) | Yes — sibling `@op-engineering/op-sqlite-node` runs the same API under Node |
-| Schema/migration tests | Engine-agnostic SQL — tested against `node:sqlite` in this branch (8 tests) | Same |
+| Schema/migration tests | Engine-agnostic SQL — tested against `better-sqlite3` in this branch (8 tests) | Same |
 
 op-sqlite's Node adapter is a genuine advantage. Mitigation for expo-sqlite:
 all storage logic lives behind the `LocalDb` interface and is tested against
-`node:sqlite` in CI (this branch), so only the thin adapter itself requires a
-device — and that adapter is ~60 lines.
+`better-sqlite3` in CI (this branch), so only the thin adapter itself requires
+a device — and that adapter is ~60 lines. The test adapter is explicit because
+the repo's CI uses Node 20, while Node's built-in `node:sqlite` starts in Node
+22.5.
 
 ## 3. Decision summary
 
@@ -147,7 +149,7 @@ Rationale:
    dependency vendors.
 2. Cryptographic properties are identical to op-sqlite (same SQLCipher core);
    performance differences are immaterial at Phase 1 scale.
-3. The CI-testability gap is closed by design (interface + node:sqlite), not
+3. The CI-testability gap is closed by design (interface + `better-sqlite3`), not
    by adding a second native dependency.
 4. ADR-0012 named SQLCipher via expo-sqlite as the going-in recommendation;
    this research confirms it.
@@ -164,10 +166,10 @@ All under `apps/mobile/src/db/`:
 | Artifact | What it proves | How to reproduce |
 |---|---|---|
 | `types.ts` — `LocalDb` interface | Engine replaceability | — |
-| `migrations.ts` + `migrations.test.ts` | Versioned transactional migrations; atomic rollback of failed migrations; duplicate-version guard; idempotency-key uniqueness; outbox drain ordering; multi-statement transaction rollback — 8 tests against Node's built-in SQLite | `pnpm --filter @tm/mobile test` |
+| `migrations.ts` + `migrations.test.ts` | Versioned transactional migrations; atomic rollback of failed migrations; duplicate-version guard; idempotency-key uniqueness; outbox drain ordering; multi-statement transaction rollback — 8 tests against `better-sqlite3` on Node 20 | `pnpm --filter @tm/mobile test` |
 | `prototypes/expo-sqlite-adapter.ts` | Encryption open sequence (`PRAGMA key` + fail-fast read), SecureStore key custody with THIS_DEVICE_ONLY, migration on open | Section 2.2/2.4 configs in `app.json`; `expo run:ios`/`expo run:android` on a device build (deferred — no devices in sandbox) |
 | `prototypes/op-sqlite-adapter.ts` | Same sequence via `open({ encryptionKey })` and platform location constants | `"op-sqlite": { "sqlcipher": true }` already in `apps/mobile/package.json` |
-| `app.json` | `useSQLCipher: true`, `allowBackup: false` | In branch |
+| `app.json` + `plugins/with-android-backup-disabled.js` | `useSQLCipher: true`, generated Android manifest `allowBackup=false` | In branch |
 
 Encryption itself (SQLCipher rejecting a wrong key) can only be executed on a
 device build and is therefore documented as the reproduction steps inside each
@@ -217,4 +219,7 @@ database (no re-key migration in Phase 1).
   https://github.com/margelo/react-native-nitro-sqlite
 - op-sqlite performance background: https://ospfranco.com/post/2023/11/09/sqlite-for-react-native,-but-5x-faster-and-5x-less-memory/
   and https://powersync.com/blog/react-native-database-performance-comparison
-- SQLCipher license: https://github.com/sqlcipher/sqlcipher (BSD-style)
+- SQLCipher Community Edition license and attribution requirements:
+  https://www.zetetic.net/sqlcipher/license/
+- Node.js `node:sqlite` history (why the test adapter avoids it on Node 20):
+  https://nodejs.org/api/sqlite.html

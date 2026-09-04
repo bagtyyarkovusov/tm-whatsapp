@@ -76,8 +76,8 @@ export async function openEncryptedDatabase(): Promise<LocalDb> {
   const key = await loadOrCreateDatabaseKey();
   // iOS Library and Android databases dir are both app-private. OS backup
   // exclusion is handled the same way as the expo-sqlite prototype
-  // (android.allowBackup=false; iOS NSURLIsExcludedFromBackupKey config
-  // plugin) — a restored file without the SecureStore key is unreadable.
+  // (manifest allowBackup=false; iOS NSURLIsExcludedFromBackupKey config
+  // plugin follow-up) — a restored file without the SecureStore key is unreadable.
   const db = open({
     name: DB_NAME,
     encryptionKey: key,

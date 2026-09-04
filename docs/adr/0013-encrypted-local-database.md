@@ -31,13 +31,13 @@ CI-testable schema logic, under a permissive license.
    no passphrase derivation and no re-key flow in Phase 1; rotation means
    wiping the database.
 
-3. **Backup exclusion.** Android Auto Backup is disabled
-   (`expo-build-properties` `android.allowBackup=false`). On iOS the database
-   file must be excluded from iCloud backup with `NSURLIsExcludedFromBackupKey`
-   (small config plugin — follow-up in the storage-adapter issue). This is
-   belt-and-braces: an OS-backup-restored file is unreadable anyway because
-   the key never leaves the device. Message recovery goes through the ADR-0007
-   E2EE backup flow, never OS backup.
+3. **Backup exclusion.** Android Auto Backup is disabled by a local Expo config
+   plugin that writes `android:allowBackup="false"` to the generated manifest.
+   On iOS the database file must be excluded from iCloud backup with
+   `NSURLIsExcludedFromBackupKey` (small config plugin — follow-up in the
+   storage-adapter issue). This is belt-and-braces: an OS-backup-restored file
+   is unreadable anyway because the key never leaves the device. Message
+   recovery goes through the ADR-0007 E2EE backup flow, never OS backup.
 
 4. **Migrations: engine-agnostic runner on `PRAGMA user_version`.** Migrations
    are ordered, uniquely versioned, applied one transaction each at database
@@ -45,7 +45,8 @@ CI-testable schema logic, under a permissive license.
    on failure — proven in `migrations.test.ts`). No down-migrations; rollback
    is delete-and-re-provision because all content is re-fetchable ciphertext.
    All storage code sits behind the `LocalDb` interface
-   (`apps/mobile/src/db/types.ts`) and is tested in CI against `node:sqlite`.
+   (`apps/mobile/src/db/types.ts`) and is tested in CI against
+   `better-sqlite3`, which works on the repo's Node 20 CI runtime.
 
 ## Rejected alternatives
 
@@ -71,8 +72,10 @@ CI-testable schema logic, under a permissive license.
 
 ### Positive
 
-- No new dependency vendor: expo-sqlite, expo-secure-store, expo-crypto, and
-  expo-build-properties are all first-party Expo packages tracked per SDK.
+- No new dependency vendor: expo-sqlite, expo-secure-store, and expo-crypto
+  are all first-party Expo packages tracked per SDK.
+- SQLCipher Community Edition remains usable under its BSD-style license; the
+  app must carry the required user-accessible attribution before release.
 - Key custody and backup exclusion make OS-level copies of the database
   worthless, matching the E2EE threat model.
 - Schema and migration logic are fully covered in CI without a device or

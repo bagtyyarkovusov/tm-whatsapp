@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import Database from "better-sqlite3";
 
 import { describe, expect, it } from "vitest";
 
@@ -8,12 +8,13 @@ import type { LocalDb, RunResult, SqlValue } from "./types";
 /**
  * CI testability evidence for #47: the migration runner, transaction
  * semantics, and v1 schema are plain SQL over SQLite, so they are exercised
- * here against Node's built-in SQLite — no emulator, no device, no native
- * build. On-device engines (expo-sqlite/SQLCipher, op-sqlite/SQLCipher)
- * execute the same SQL; their prototype adapters live in ./prototypes.
+ * here against better-sqlite3 under the repo's Node 20 CI runtime — no
+ * emulator, no device, no mobile native build. On-device engines
+ * (expo-sqlite/SQLCipher, op-sqlite/SQLCipher) execute the same SQL; their
+ * prototype adapters live in ./prototypes.
  */
 function createNodeDb(path = ":memory:"): LocalDb {
-  const db = new DatabaseSync(path);
+  const db = new Database(path);
   return {
     async exec(sql) {
       db.exec(sql);

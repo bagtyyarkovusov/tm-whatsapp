@@ -19,8 +19,8 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   prettier,
   {
-    // CommonJS tool configs (Babel/Metro/Tailwind in the Expo app).
-    files: ["**/*.config.js", "**/*.config.cjs"],
+    // CommonJS tool configs (Babel/Metro/Tailwind and Expo config plugins).
+    files: ["**/*.config.js", "**/*.config.cjs", "**/plugins/**/*.js"],
     rules: {
       "no-undef": "off",
       "@typescript-eslint/no-require-imports": "off",

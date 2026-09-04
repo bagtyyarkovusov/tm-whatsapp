@@ -4,7 +4,7 @@
  * Research prototype for #47 / ADR-0013: every candidate engine
  * (expo-sqlite + SQLCipher, op-sqlite + SQLCipher) is wrapped behind this
  * interface so the schema, migration runner, and outbox semantics are
- * identical across engines and testable in CI with node:sqlite.
+ * identical across engines and testable in CI with a Node SQLite adapter.
  */
 
 export type SqlValue = string | number | null | Uint8Array;
